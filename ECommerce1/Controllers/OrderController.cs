@@ -53,6 +53,7 @@ namespace ECommerce1.Controllers
                     PointsEarned = o.PointsEarned,
                     PointsRedeemed = o.PointsRedeemed,
                     DiscountFromPoints = o.DiscountFromPoints,
+                    Note = o.Note,
                     Items = o.OrderItems.Select(oi => new OrderItemResponse
                     {
                         Id = oi.Id,
@@ -95,6 +96,7 @@ namespace ECommerce1.Controllers
                     PointsEarned = o.PointsEarned,
                     PointsRedeemed = o.PointsRedeemed,
                     DiscountFromPoints = o.DiscountFromPoints,
+                    Note = o.Note,
                     Items = o.OrderItems.Select(oi => new OrderItemResponse
                     {
                         Id = oi.Id,
@@ -118,209 +120,251 @@ namespace ECommerce1.Controllers
             if (!Guid.TryParse(userIdString, out Guid userId))
                 return Unauthorized();
 
-            // 1. Lấy giỏ hàng
-            var cart = await _context.Carts
-                .Include(c => c.CartItems)
-                    .ThenInclude(ci => ci.ProductVariant)
-                .FirstOrDefaultAsync(c => c.UserId == userId);
-
-            if (cart == null || cart.CartItems == null || !cart.CartItems.Any())
-                return BadRequest("Giỏ hàng của bạn đang trống.");
-
-            // 2. Kiểm tra tồn kho trước khi đặt
-            foreach (var item in cart.CartItems)
+            using var transaction = await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+            try
             {
-                if (item.ProductVariant.AvailableStock < item.Quantity)
-                    return BadRequest($"Sản phẩm '{item.ProductVariant.Name}' không đủ tồn kho. Vui lòng giảm số lượng.");
-            }
+                // 1. Lấy giỏ hàng
+                var cart = await _context.Carts
+                    .Include(c => c.CartItems)
+                        .ThenInclude(ci => ci.ProductVariant)
+                    .FirstOrDefaultAsync(c => c.UserId == userId);
 
-            // 3. Tính tổng tiền
-            decimal subTotal = cart.CartItems.Sum(ci => ci.Quantity * ci.ProductVariant.Price);
-            decimal discountValue = 0;
-            Promotion appliedPromotion = null;
+                if (cart == null || cart.CartItems == null || !cart.CartItems.Any())
+                    return BadRequest("Giỏ hàng của bạn đang trống.");
 
-            // 4. Áp dụng mã giảm giá (Nếu có)
-            if (!string.IsNullOrEmpty(request.PromotionCode))
-            {
-                appliedPromotion = await _context.Promotions
-                    .FirstOrDefaultAsync(p => p.Code == request.PromotionCode && p.IsActive);
-
-                if (appliedPromotion == null)
-                    return BadRequest("Mã giảm giá không tồn tại hoặc đã bị khóa.");
-
-                if (DateTime.UtcNow < appliedPromotion.StartDate || DateTime.UtcNow > appliedPromotion.EndDate)
-                    return BadRequest("Mã giảm giá đã hết hạn hoặc chưa tới thời gian sử dụng.");
-
-                // Kiểm tra User đã dùng mã này bao giờ chưa 
-                // (Tạm thời COMMENT LẠI để bạn có thể test ép mã nhiều lần bằng 1 tài khoản)
-                bool hasUsed = await _context.PromotionUsages.AnyAsync(pu => pu.PromotionId == appliedPromotion.Id && pu.UserId == userId);
-                if (hasUsed)
-                    return BadRequest("Bạn đã sử dụng mã giảm giá này rồi.");
-
-                // Kiểm tra giới hạn số lượng mã đã phát hành
-                if (appliedPromotion.UsageLimit > 0 && appliedPromotion.UsedCount >= appliedPromotion.UsageLimit)
-                    return BadRequest("Mã giảm giá này đã hết lượt sử dụng.");
-
-                if (appliedPromotion.DiscountType.ToUpper() == "PERCENTAGE")
+                // 2. Kiểm tra tồn kho trước khi đặt
+                foreach (var item in cart.CartItems)
                 {
-                    discountValue = subTotal * (appliedPromotion.DiscountValue / 100);
-                }
-                else if (appliedPromotion.DiscountType.ToUpper() == "FIXED_AMOUNT")
-                {
-                    discountValue = appliedPromotion.DiscountValue;
+                    if (item.ProductVariant.AvailableStock < item.Quantity)
+                        return BadRequest($"Sản phẩm '{item.ProductVariant.Name}' không đủ tồn kho. Vui lòng giảm số lượng.");
                 }
 
-                if (discountValue > subTotal) discountValue = subTotal;
-            }
+                // 3. Tính tổng tiền
+                decimal subTotal = cart.CartItems.Sum(ci => ci.Quantity * ci.ProductVariant.Price);
+                decimal discountValue = 0;
+                Promotion appliedPromotion = null;
 
-            // 5. Xử lý điểm thành viên và giá thanh toán cuối cùng
-            var user = await _context.Users.FindAsync(userId);
-            if (user == null) return NotFound("Không tìm thấy thông tin tài khoản.");
-
-            int pointsRedeemed = 0;
-            decimal discountFromPoints = 0;
-            decimal priceBeforePoints = subTotal - discountValue;
-
-            if (request.PointsToRedeem > 0)
-            {
-                if (user.RewardPoints < request.PointsToRedeem)
-                    return BadRequest("Số điểm tích lũy của bạn không đủ.");
-
-                pointsRedeemed = request.PointsToRedeem;
-                discountFromPoints = pointsRedeemed; // 1 điểm = 1 VNĐ
-                if (discountFromPoints > priceBeforePoints)
+                // 4. Áp dụng mã giảm giá (Nếu có)
+                if (!string.IsNullOrEmpty(request.PromotionCode))
                 {
-                    discountFromPoints = priceBeforePoints;
-                    pointsRedeemed = (int)discountFromPoints;
+                    appliedPromotion = await _context.Promotions
+                        .FirstOrDefaultAsync(p => p.Code == request.PromotionCode && p.IsActive);
+
+                    if (appliedPromotion == null)
+                        return BadRequest("Mã giảm giá không tồn tại hoặc đã bị khóa.");
+
+                    if (DateTime.UtcNow < appliedPromotion.StartDate || DateTime.UtcNow > appliedPromotion.EndDate)
+                        return BadRequest("Mã giảm giá đã hết hạn hoặc chưa tới thời gian sử dụng.");
+
+                    // Kiểm tra User đã dùng mã này bao giờ chưa 
+                    bool hasUsed = await _context.PromotionUsages.AnyAsync(pu => pu.PromotionId == appliedPromotion.Id && pu.UserId == userId);
+                    if (hasUsed)
+                        return BadRequest("Bạn đã sử dụng mã giảm giá này rồi.");
+
+                    // Kiểm tra giới hạn số lượng mã đã phát hành
+                    if (appliedPromotion.UsageLimit > 0 && appliedPromotion.UsedCount >= appliedPromotion.UsageLimit)
+                        return BadRequest("Mã giảm giá này đã hết lượt sử dụng.");
+
+                    if (appliedPromotion.DiscountType.ToUpper() == "PERCENTAGE")
+                    {
+                        discountValue = subTotal * (appliedPromotion.DiscountValue / 100);
+                    }
+                    else if (appliedPromotion.DiscountType.ToUpper() == "FIXED_AMOUNT")
+                    {
+                        discountValue = appliedPromotion.DiscountValue;
+                    }
+
+                    if (discountValue > subTotal) discountValue = subTotal;
                 }
-                priceBeforePoints -= discountFromPoints;
-            }
 
-            decimal finalPrice = priceBeforePoints;
-            if (finalPrice < 0) finalPrice = 0;
+                // 5. Xử lý điểm thành viên và giá thanh toán cuối cùng
+                var user = await _context.Users.FindAsync(userId);
+                if (user == null) return NotFound("Không tìm thấy thông tin tài khoản.");
 
-            // Tích lũy điểm thưởng: 0.2% trên số tiền thanh toán cuối cùng
-            int pointsEarned = (int)(finalPrice * 0.002m);
+                int pointsRedeemed = 0;
+                decimal discountFromPoints = 0;
+                decimal priceBeforePoints = subTotal - discountValue;
 
-            if (pointsRedeemed > 0)
-            {
-                user.RewardPoints -= pointsRedeemed;
-            }
+                if (request.PointsToRedeem > 0)
+                {
+                    if (user.RewardPoints < request.PointsToRedeem)
+                        return BadRequest("Số điểm tích lũy của bạn không đủ.");
 
-            // 5.2. Xử lý địa chỉ giao hàng (Snapshot)
-            string receiverName = "";
-            string receiverPhone = "";
-            string shippingAddressLine = "";
-            string shippingWard = "";
-            string shippingProvince = "";
+                    pointsRedeemed = request.PointsToRedeem;
+                    discountFromPoints = pointsRedeemed; // 1 điểm = 1 VNĐ
+                    if (discountFromPoints > priceBeforePoints)
+                    {
+                        discountFromPoints = priceBeforePoints;
+                        pointsRedeemed = (int)discountFromPoints;
+                    }
+                    priceBeforePoints -= discountFromPoints;
+                }
 
-            if (request.ShippingInfoId.HasValue && request.ShippingInfoId.Value > 0)
-            {
-                var shippingInfo = await _context.ShippingInfos
-                    .Include(s => s.Ward).ThenInclude(w => w.Province)
-                    .FirstOrDefaultAsync(s => s.Id == request.ShippingInfoId.Value);
+                decimal shippingFee = 0;
+                string finalWardId = request.WardId;
 
-                if (shippingInfo == null || shippingInfo.UserId != userId)
-                    return BadRequest("Địa chỉ không hợp lệ.");
+                if (request.ShippingInfoId.HasValue && request.ShippingInfoId.Value > 0)
+                {
+                    var shippingInfo = await _context.ShippingInfos.FindAsync(request.ShippingInfoId.Value);
+                    if (shippingInfo != null)
+                    {
+                        finalWardId = shippingInfo.WardId;
+                    }
+                }
 
-                receiverName = shippingInfo.RecipientName;
-                receiverPhone = shippingInfo.PhoneNumber;
-                shippingAddressLine = shippingInfo.AddressLine;
-                shippingWard = shippingInfo.Ward != null ? shippingInfo.Ward.Name : "";
-                shippingProvince = shippingInfo.Ward != null && shippingInfo.Ward.Province != null ? shippingInfo.Ward.Province.Name : "";
-            }
-            else
-            {
-                if (string.IsNullOrEmpty(request.RecipientName) || string.IsNullOrEmpty(request.PhoneNumber) || string.IsNullOrEmpty(request.AddressLine))
-                    return BadRequest("Vui lòng cung cấp đầy đủ thông tin giao hàng.");
+                if (!string.IsNullOrEmpty(finalWardId))
+                {
+                    var ward = await _context.Wards
+                        .Include(w => w.Province)
+                        .FirstOrDefaultAsync(w => w.Id == finalWardId);
+                    if (ward != null)
+                    {
+                        decimal baseFee = 35000;
+                        string provinceName = ward.Province?.Name ?? "";
+                        if (provinceName.Contains("Hồ Chí Minh", StringComparison.OrdinalIgnoreCase) || 
+                            provinceName.Contains("Hà Nội", StringComparison.OrdinalIgnoreCase) || 
+                            provinceName.Contains("Đà Nẵng", StringComparison.OrdinalIgnoreCase))
+                        {
+                            baseFee = 22000;
+                        }
+                        shippingFee = baseFee;
+                    }
+                }
 
-                var ward = await _context.Wards.Include(w => w.Province).FirstOrDefaultAsync(w => w.Id == request.WardId);
+                decimal finalPrice = priceBeforePoints + shippingFee;
+                if (finalPrice < 0) finalPrice = 0;
 
-                receiverName = request.RecipientName;
-                receiverPhone = request.PhoneNumber;
-                shippingAddressLine = request.AddressLine;
-                shippingWard = ward != null ? ward.Name : "";
-                shippingProvince = ward != null && ward.Province != null ? ward.Province.Name : "";
+                // Tích lũy điểm thưởng: 0.2% trên số tiền thanh toán cuối cùng
+                int pointsEarned = (int)(finalPrice * 0.002m);
 
-                var newShipping = new ShippingInfo
+                if (pointsRedeemed > 0)
+                {
+                    user.RewardPoints -= pointsRedeemed;
+                }
+
+                // 5.2. Xử lý địa chỉ giao hàng (Snapshot)
+                string receiverName = "";
+                string receiverPhone = "";
+                string shippingAddressLine = "";
+                string shippingWard = "";
+                string shippingProvince = "";
+
+                if (request.ShippingInfoId.HasValue && request.ShippingInfoId.Value > 0)
+                {
+                    var shippingInfo = await _context.ShippingInfos
+                        .Include(s => s.Ward).ThenInclude(w => w.Province)
+                        .FirstOrDefaultAsync(s => s.Id == request.ShippingInfoId.Value);
+
+                    if (shippingInfo == null || shippingInfo.UserId != userId)
+                        return BadRequest("Địa chỉ không hợp lệ.");
+
+                    receiverName = shippingInfo.RecipientName;
+                    receiverPhone = shippingInfo.PhoneNumber;
+                    shippingAddressLine = shippingInfo.AddressLine;
+                    shippingWard = shippingInfo.Ward != null ? shippingInfo.Ward.Name : "";
+                    shippingProvince = shippingInfo.Ward != null && shippingInfo.Ward.Province != null ? shippingInfo.Ward.Province.Name : "";
+                }
+                else
+                {
+                    if (string.IsNullOrEmpty(request.RecipientName) || string.IsNullOrEmpty(request.PhoneNumber) || string.IsNullOrEmpty(request.AddressLine))
+                        return BadRequest("Vui lòng cung cấp đầy đủ thông tin giao hàng.");
+
+                    var ward = await _context.Wards.Include(w => w.Province).FirstOrDefaultAsync(w => w.Id == request.WardId);
+
+                    receiverName = request.RecipientName;
+                    receiverPhone = request.PhoneNumber;
+                    shippingAddressLine = request.AddressLine;
+                    shippingWard = ward != null ? ward.Name : "";
+                    shippingProvince = ward != null && ward.Province != null ? ward.Province.Name : "";
+
+                    var newShipping = new ShippingInfo
+                    {
+                        UserId = userId,
+                        RecipientName = request.RecipientName,
+                        PhoneNumber = request.PhoneNumber,
+                        AddressLine = request.AddressLine,
+                        WardId = request.WardId,
+                        IsDefault = true,
+                        CreatedAt = DateTime.UtcNow,
+                        UpdatedAt = DateTime.UtcNow
+                    };
+                    _context.ShippingInfos.Add(newShipping);
+                }
+
+                // 6. Tạo đơn hàng (Order)
+                var newOrder = new Order
                 {
                     UserId = userId,
-                    RecipientName = request.RecipientName,
-                    PhoneNumber = request.PhoneNumber,
-                    AddressLine = request.AddressLine,
-                    WardId = request.WardId,
-                    IsDefault = true,
+                    ReceiverName = receiverName,
+                    ReceiverPhone = receiverPhone,
+                    ShippingAddressLine = shippingAddressLine,
+                    ShippingWard = shippingWard,
+                    ShippingProvince = shippingProvince,
+                    PromotionId = appliedPromotion?.Id,
+                    TotalPrice = finalPrice,
+                    OrderStatusId = 1, // 1 = Pending (Chờ thanh toán)
                     CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow
+                    PointsEarned = pointsEarned,
+                    PointsRedeemed = pointsRedeemed,
+                    DiscountFromPoints = discountFromPoints,
+                    Note = request.Note
                 };
-                _context.ShippingInfos.Add(newShipping);
-            }
+                _context.Orders.Add(newOrder);
+                await _context.SaveChangesAsync(); // Lưu để lấy Order.Id
 
-            // 6. Tạo đơn hàng (Order)
-            var newOrder = new Order
-            {
-                UserId = userId,
-                ReceiverName = receiverName,
-                ReceiverPhone = receiverPhone,
-                ShippingAddressLine = shippingAddressLine,
-                ShippingWard = shippingWard,
-                ShippingProvince = shippingProvince,
-                PromotionId = appliedPromotion?.Id,
-                TotalPrice = finalPrice,
-                OrderStatusId = 1, // 1 = Pending (Chờ thanh toán)
-                CreatedAt = DateTime.UtcNow,
-                PointsEarned = pointsEarned,
-                PointsRedeemed = pointsRedeemed,
-                DiscountFromPoints = discountFromPoints
-            };
-            _context.Orders.Add(newOrder);
-            await _context.SaveChangesAsync(); // Lưu để lấy Order.Id
-
-            // 7. Tạo OrderItems và trừ Tồn kho giữ chỗ (ReservedStock)
-            foreach (var item in cart.CartItems)
-            {
-                var orderItem = new OrderItem
+                // 7. Tạo OrderItems và trừ Tồn kho giữ chỗ (ReservedStock)
+                foreach (var item in cart.CartItems)
                 {
-                    OrderId = newOrder.Id,
-                    VariantId = item.VariantId,
-                    Quantity = item.Quantity,
-                    PriceAtPurchase = item.ProductVariant.Price
-                };
-                _context.OrderItems.Add(orderItem);
+                    var orderItem = new OrderItem
+                    {
+                        OrderId = newOrder.Id,
+                        VariantId = item.VariantId,
+                        Quantity = item.Quantity,
+                        PriceAtPurchase = item.ProductVariant.Price
+                    };
+                    _context.OrderItems.Add(orderItem);
 
-                // Quan trọng: Tăng ReservedStock lên để giữ hàng cho khách này
-                item.ProductVariant.ReservedStock += item.Quantity;
-            }
+                    // Quan trọng: Tăng ReservedStock lên để giữ hàng cho khách này
+                    item.ProductVariant.ReservedStock += item.Quantity;
+                }
 
-            // 8. Lưu lịch sử dùng mã giảm giá
-            if (appliedPromotion != null)
-            {
-                var usage = new PromotionUsage
+                // 8. Lưu lịch sử dùng mã giảm giá
+                if (appliedPromotion != null)
                 {
-                    PromotionId = appliedPromotion.Id,
-                    UserId = userId,
-                    UsedAt = DateTime.UtcNow
-                };
-                _context.PromotionUsages.Add(usage);
-                
-                // Tăng số lượng đã sử dụng của mã giảm giá
-                appliedPromotion.UsedCount += 1;
+                    var usage = new PromotionUsage
+                    {
+                        PromotionId = appliedPromotion.Id,
+                        UserId = userId,
+                        UsedAt = DateTime.UtcNow
+                    };
+                    _context.PromotionUsages.Add(usage);
+                    
+                    // Tăng số lượng đã sử dụng của mã giảm giá
+                    appliedPromotion.UsedCount += 1;
+                }
+
+                // 9. Xóa giỏ hàng
+                _context.CartItems.RemoveRange(cart.CartItems);
+
+                // 10. Lưu tất cả thay đổi
+                await _context.SaveChangesAsync();
+
+                await transaction.CommitAsync();
+
+                return Ok(new { 
+                    Message = "Đặt hàng thành công!", 
+                    OrderId = newOrder.Id, 
+                    TotalPaid = finalPrice,
+                    PointsEarned = pointsEarned,
+                    PointsRedeemed = pointsRedeemed,
+                    NewPointsBalance = user.RewardPoints
+                });
             }
-
-            // 9. Xóa giỏ hàng
-            _context.CartItems.RemoveRange(cart.CartItems);
-
-            // 10. Lưu tất cả thay đổi
-            await _context.SaveChangesAsync();
-
-            return Ok(new { 
-                Message = "Đặt hàng thành công!", 
-                OrderId = newOrder.Id, 
-                TotalPaid = finalPrice,
-                PointsEarned = pointsEarned,
-                PointsRedeemed = pointsRedeemed,
-                NewPointsBalance = user.RewardPoints
-            });
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                return StatusCode(500, $"Có lỗi xảy ra trong quá trình đặt hàng: {ex.Message}");
+            }
         }
 
         // ================= HỦY ĐƠN HÀNG (DÀNH CHO KHÁCH HÀNG) =================
