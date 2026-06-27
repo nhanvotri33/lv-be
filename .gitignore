@@ -1,0 +1,7 @@
+.vs/
+[Bb]in/
+[Oo]bj/
+*.user
+
+# Secrets and developer settings
+ECommerce1/appsettings.Development.json
