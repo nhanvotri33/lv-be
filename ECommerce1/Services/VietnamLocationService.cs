@@ -28,18 +28,14 @@ namespace ECommerce1.Services
 
     public static class VietnamLocationService
     {
-        //khai báo biến http 
         private static readonly HttpClient _httpClient = new HttpClient();
-        // khai báo biến cache để lưu data load lên được -> load vô RAM
         private static VietnamProvinceApiResponse? _cachedData;
 
-        // hàm này dùng để load data từ API vào RAM
         private static async Task LoadDataAsync()
         {
-            // nếu đã load data rồi thì không load nữa
             if (_cachedData != null) return;
 
-            try // xử lý lỗi khi load data
+            try
             {
                 var response = await _httpClient.GetFromJsonAsync<VietnamProvinceApiResponse>("https://vietnamlabs.com/api/vietnamprovince");
                 if (response != null && response.Success)
@@ -153,6 +149,80 @@ namespace ECommerce1.Services
                         }
                         return;
                     }
+                }
+            }
+        }
+
+        public static async Task MigrateAllLocationsAsync(ApplicationDbContext context)
+        {
+            await LoadDataAsync();
+            if (_cachedData?.Data == null) return;
+
+            // 1. Get existing provinces and wards in DB
+            var existingProvinces = await context.Provinces.ToDictionaryAsync(p => p.Id);
+            var existingWards = await context.Wards.ToDictionaryAsync(w => w.Id);
+
+            var newProvinces = new List<Province>();
+            var newWards = new List<Ward>();
+
+            // 2. Loop through VietnamLabs data
+            foreach (var provinceData in _cachedData.Data)
+            {
+                if (string.IsNullOrEmpty(provinceData.Id)) continue;
+
+                if (!existingProvinces.ContainsKey(provinceData.Id))
+                {
+                    var province = new Province
+                    {
+                        Id = provinceData.Id,
+                        Name = provinceData.Province ?? string.Empty,
+                        FullName = provinceData.Province ?? string.Empty,
+                        CodeName = provinceData.Province ?? string.Empty
+                    };
+                    newProvinces.Add(province);
+                    existingProvinces.Add(province.Id, province);
+                }
+
+                if (provinceData.Wards != null)
+                {
+                    foreach (var wardData in provinceData.Wards)
+                    {
+                        if (string.IsNullOrEmpty(wardData.Name)) continue;
+                        var wardId = GetStableId($"{provinceData.Id}_{wardData.Name}");
+
+                        if (!existingWards.ContainsKey(wardId))
+                        {
+                            var ward = new Ward
+                            {
+                                Id = wardId,
+                                Name = wardData.Name,
+                                FullName = wardData.Name,
+                                CodeName = wardData.Name,
+                                ProvinceId = provinceData.Id
+                            };
+                            newWards.Add(ward);
+                            existingWards.Add(ward.Id, ward);
+                        }
+                    }
+                }
+            }
+
+            // 3. Save new provinces in batches
+            if (newProvinces.Any())
+            {
+                context.Provinces.AddRange(newProvinces);
+                await context.SaveChangesAsync();
+            }
+
+            // 4. Save new wards in batches of 500 to avoid parameter limit issues
+            if (newWards.Any())
+            {
+                const int batchSize = 500;
+                for (int i = 0; i < newWards.Count; i += batchSize)
+                {
+                    var batch = newWards.Skip(i).Take(batchSize).ToList();
+                    context.Wards.AddRange(batch);
+                    await context.SaveChangesAsync();
                 }
             }
         }

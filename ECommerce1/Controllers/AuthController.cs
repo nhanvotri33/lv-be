@@ -97,9 +97,10 @@ namespace ECommerce1.Controllers
         {
             try
             {
+                var googleClientId = _configuration["Google:ClientId"] ?? "702529174883-k7q714ds1n185oaabhl85hfhhqhqg7dq.apps.googleusercontent.com";
                 var settings = new Google.Apis.Auth.GoogleJsonWebSignature.ValidationSettings()
                 {
-                    Audience = new List<string>() { "702529174883-k7q714ds1n185oaabhl85hfhhqhqg7dq.apps.googleusercontent.com" }
+                    Audience = new List<string>() { googleClientId }
                 };
                 
                 var payload = await Google.Apis.Auth.GoogleJsonWebSignature.ValidateAsync(request.IdToken, settings);
