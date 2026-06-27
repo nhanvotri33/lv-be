@@ -234,6 +234,8 @@ namespace ECommerce1.Controllers
                 if (string.IsNullOrEmpty(request.RecipientName) || string.IsNullOrEmpty(request.PhoneNumber) || string.IsNullOrEmpty(request.AddressLine))
                     return BadRequest("Vui lòng cung cấp đầy đủ thông tin giao hàng.");
 
+                await ECommerce1.Services.VietnamLocationService.EnsureLocationExistsAsync(_context, request.WardId);
+
                 var ward = await _context.Wards.Include(w => w.Province).FirstOrDefaultAsync(w => w.Id == request.WardId);
 
                 receiverName = request.RecipientName;

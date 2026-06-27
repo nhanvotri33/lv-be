@@ -81,6 +81,8 @@ namespace ECommerce1.Controllers
                 if (!hasAny) request.IsDefault = true;
             }
 
+            await ECommerce1.Services.VietnamLocationService.EnsureLocationExistsAsync(_context, request.WardId);
+
             var newInfo = new ShippingInfo
             {
                 UserId = userId,
@@ -129,6 +131,8 @@ namespace ECommerce1.Controllers
                     old.IsDefault = false;
                 }
             }
+
+            await ECommerce1.Services.VietnamLocationService.EnsureLocationExistsAsync(_context, request.WardId);
 
             info.RecipientName = request.RecipientName;
             info.PhoneNumber = request.PhoneNumber;
