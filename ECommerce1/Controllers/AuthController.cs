@@ -97,7 +97,11 @@ namespace ECommerce1.Controllers
         {
             try
             {
-                var googleClientId = _configuration["Google:ClientId"] ?? "702529174883-k7q714ds1n185oaabhl85hfhhqhqg7dq.apps.googleusercontent.com";
+                var googleClientId = _configuration["Google:ClientId"];
+                if (string.IsNullOrEmpty(googleClientId))
+                {
+                    return BadRequest("Google Client ID is not configured.");
+                }
                 var settings = new Google.Apis.Auth.GoogleJsonWebSignature.ValidationSettings()
                 {
                     Audience = new List<string>() { googleClientId }
