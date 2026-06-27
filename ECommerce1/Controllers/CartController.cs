@@ -93,5 +93,66 @@ namespace ECommerce1.Controllers
 
             return Ok("Đã làm sạch giỏ hàng.");
         }
+
+        // Đồng bộ giỏ hàng hàng loạt (Batch Sync)
+        [HttpPost("sync")]
+        public async Task<IActionResult> SyncCart([FromBody] System.Collections.Generic.List<SyncCartRequest> items)
+        {
+            var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(userIdString, out Guid userId))
+                return Unauthorized();
+
+            var cart = await _context.Carts
+                .Include(c => c.CartItems)
+                .FirstOrDefaultAsync(c => c.UserId == userId);
+
+            if (cart == null)
+            {
+                cart = new Cart
+                {
+                    UserId = userId,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                _context.Carts.Add(cart);
+                await _context.SaveChangesAsync();
+            }
+
+            // Xóa sạch các item cũ
+            if (cart.CartItems != null && cart.CartItems.Any())
+            {
+                _context.CartItems.RemoveRange(cart.CartItems);
+            }
+
+            // Thêm các item mới
+            if (items != null)
+            {
+                foreach (var item in items)
+                {
+                    // Kiểm tra xem variant có tồn tại không
+                    var variant = await _context.ProductVariants.FindAsync(item.VariantId);
+                    if (variant == null) continue;
+
+                    var cartItem = new CartItem
+                    {
+                        CartId = cart.Id,
+                        VariantId = item.VariantId,
+                        Quantity = item.Quantity
+                    };
+                    _context.CartItems.Add(cartItem);
+                }
+            }
+
+            cart.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            return Ok("Đồng bộ giỏ hàng thành công.");
+        }
+    }
+
+    public class SyncCartRequest
+    {
+        public int VariantId { get; set; }
+        public int Quantity { get; set; }
     }
 }
