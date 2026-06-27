@@ -20,6 +20,7 @@ namespace ECommerce1.DTOs.Order
         public int PointsEarned { get; set; }
         public int PointsRedeemed { get; set; }
         public decimal DiscountFromPoints { get; set; }
+        public string? Note { get; set; } // Ghi chú giao hàng
         public List<OrderItemResponse> Items { get; set; } = new List<OrderItemResponse>();
     }
 }
