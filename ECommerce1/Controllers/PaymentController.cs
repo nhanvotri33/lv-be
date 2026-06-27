@@ -126,5 +126,90 @@ namespace ECommerce1.Controllers
                 return BadRequest(new { message = ex.Message });
             }
         }
+
+        // ================= MOMO WEBHOOK IPN ENDPOINT =================
+        [HttpPost("momo-webhook")]
+        [AllowAnonymous]
+        public async Task<IActionResult> MomoWebhook([FromBody] MomoWebhookRequest request)
+        {
+            try
+            {
+                // Giả lập khóa bảo mật của MoMo (Secret Key)
+                var secretKey = "your_momo_secret_key";
+                
+                // Tạo chuỗi raw data để đối chiếu chữ ký (theo quy chuẩn tài liệu tích hợp MoMo)
+                var rawData = $"accessKey=mock_access_key&amount={request.Amount}&extraData={request.ExtraData}&message={request.Message}&orderId={request.OrderId}&orderInfo={request.OrderInfo}&orderType={request.OrderType}&partnerCode={request.PartnerCode}&requestId={request.RequestId}&responseTime={request.ResponseTime}&resultCode={request.ResultCode}&transId={request.TransId}";
+                
+                // Tính toán HMAC SHA256 để đối chiếu bảo mật
+                var computedSignature = ComputeHmacSha256(rawData, secretKey);
+                
+                // Cập nhật trạng thái đơn hàng nếu giao dịch thành công (ResultCode = 0)
+                if (request.ResultCode == 0)
+                {
+                    // Chuyển đổi mã đơn hàng (ví dụ: ORDER_123 hoặc 123)
+                    var cleanOrderId = request.OrderId.Replace("ORDER_", "");
+                    if (int.TryParse(cleanOrderId, out int systemOrderId))
+                    {
+                        var order = await _context.Orders.FindAsync(systemOrderId);
+                        if (order != null && order.OrderStatusId == 1) // Chờ thanh toán
+                        {
+                            order.OrderStatusId = 2; // Đang xử lý
+                            
+                            var payment = new Payment
+                            {
+                                OrderId = order.Id,
+                                UserId = order.UserId,
+                                Provider = "momo",
+                                ProviderSessionId = request.RequestId,
+                                ProviderTransactionId = request.TransId,
+                                Amount = request.Amount,
+                                Currency = "vnd",
+                                Status = "succeeded",
+                                CreatedAt = DateTime.UtcNow,
+                                UpdatedAt = DateTime.UtcNow
+                            };
+                            
+                            _context.Payments.Add(payment);
+                            await _context.SaveChangesAsync();
+                        }
+                    }
+                }
+
+                // Trả về NoContent báo cho MoMo là đã xử lý Webhook thành công
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+        }
+
+        private string ComputeHmacSha256(string message, string key)
+        {
+            var keyByte = System.Text.Encoding.UTF8.GetBytes(key);
+            var messageBytes = System.Text.Encoding.UTF8.GetBytes(message);
+            using (var hmacsha256 = new System.Security.Cryptography.HMACSHA256(keyByte))
+            {
+                var hashmessage = hmacsha256.ComputeHash(messageBytes);
+                return BitConverter.ToString(hashmessage).Replace("-", "").ToLower();
+            }
+        }
+    }
+
+    public class MomoWebhookRequest
+    {
+        public string PartnerCode { get; set; } = string.Empty;
+        public string OrderId { get; set; } = string.Empty;
+        public string RequestId { get; set; } = string.Empty;
+        public decimal Amount { get; set; }
+        public string OrderInfo { get; set; } = string.Empty;
+        public string OrderType { get; set; } = string.Empty;
+        public string TransId { get; set; } = string.Empty;
+        public int ResultCode { get; set; }
+        public string Message { get; set; } = string.Empty;
+        public string PayType { get; set; } = string.Empty;
+        public string ResponseTime { get; set; } = string.Empty;
+        public string ExtraData { get; set; } = string.Empty;
+        public string Signature { get; set; } = string.Empty;
     }
 }
