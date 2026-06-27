@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Linq;
+using System.Security.Claims;
 using System.Threading.Tasks;
 
 namespace ECommerce1.Controllers
@@ -104,5 +105,79 @@ namespace ECommerce1.Controllers
             await _context.SaveChangesAsync();
             return Ok("Cập nhật mã khuyến mãi thành công.");
         }
+
+        // Xóa mã giảm giá (Chỉ Admin)
+        [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> Delete(int id)
+        {
+            var promo = await _context.Promotions.FindAsync(id);
+            if (promo == null) return NotFound("Không tìm thấy mã khuyến mãi.");
+
+            _context.Promotions.Remove(promo);
+            await _context.SaveChangesAsync();
+            return Ok("Xóa mã khuyến mãi thành công.");
+        }
+
+        // Kiểm tra và áp dụng mã giảm giá
+        [HttpPost("validate")]
+        public async Task<IActionResult> Validate([FromBody] ValidatePromotionRequest request)
+        {
+            if (string.IsNullOrEmpty(request.Code))
+                return BadRequest("Mã giảm giá trống.");
+
+            var code = request.Code.ToUpper().Trim();
+            var promo = await _context.Promotions.FirstOrDefaultAsync(p => p.Code == code);
+            
+            if (promo == null)
+                return NotFound("Mã giảm giá không tồn tại.");
+
+            if (!promo.IsActive)
+                return BadRequest("Mã giảm giá đã bị vô hiệu hóa.");
+
+            var now = DateTime.UtcNow;
+            if (now < promo.StartDate || now > promo.EndDate)
+                return BadRequest("Mã giảm giá đã hết hạn hoặc chưa tới thời gian áp dụng.");
+
+            if (promo.UsageLimit > 0 && promo.UsedCount >= promo.UsageLimit)
+                return BadRequest("Mã giảm giá đã hết lượt sử dụng.");
+
+            // Kiểm tra xem User đã dùng mã này bao giờ chưa
+            var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (Guid.TryParse(userIdString, out Guid userId))
+            {
+                bool hasUsed = await _context.PromotionUsages.AnyAsync(pu => pu.PromotionId == promo.Id && pu.UserId == userId);
+                if (hasUsed)
+                    return BadRequest("Bạn đã sử dụng mã giảm giá này rồi.");
+            }
+
+            decimal discountValue = 0;
+            if (promo.DiscountType.ToUpper() == "PERCENTAGE")
+            {
+                discountValue = request.SubTotal * (promo.DiscountValue / 100);
+            }
+            else if (promo.DiscountType.ToUpper() == "FIXED_AMOUNT")
+            {
+                discountValue = promo.DiscountValue;
+            }
+
+            if (discountValue > request.SubTotal)
+                discountValue = request.SubTotal;
+
+            return Ok(new
+            {
+                promo.Id,
+                promo.Code,
+                promo.DiscountType,
+                DiscountValue = promo.DiscountValue,
+                DiscountAmount = discountValue
+            });
+        }
+    }
+
+    public class ValidatePromotionRequest
+    {
+        public string Code { get; set; }
+        public decimal SubTotal { get; set; }
     }
 }

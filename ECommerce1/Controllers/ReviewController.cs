@@ -103,7 +103,7 @@ namespace ECommerce1.Controllers
                 ProductId = request.ProductId,
                 UserId = userId,
                 Rating = request.Rating,
-                Comment = request.Comment,
+                Comment = System.Net.WebUtility.HtmlEncode(request.Comment),
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -122,7 +122,7 @@ namespace ECommerce1.Controllers
             if (review == null)
                 return NotFound("Không tìm thấy bài đánh giá.");
 
-            review.AdminReply = request.Reply;
+            review.AdminReply = System.Net.WebUtility.HtmlEncode(request.Reply);
             review.RepliedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
@@ -143,6 +143,46 @@ namespace ECommerce1.Controllers
 
             string status = review.IsHidden ? "đã bị ẩn" : "đã được hiển thị lại";
             return Ok($"Bài đánh giá {status}.");
+        }
+
+        // ================= GET ALL REVIEWS DEFAULT ROUTE (ADMIN ONLY) =================
+        [Authorize(Roles = "Admin")]
+        [HttpGet]
+        public async Task<IActionResult> GetAllReviewsForAdminDefault()
+        {
+            var reviews = await _context.Reviews
+                .Include(r => r.User)
+                .Include(r => r.Product)
+                .OrderByDescending(r => r.CreatedAt)
+                .Select(r => new
+                {
+                    r.Id,
+                    r.Rating,
+                    r.Comment,
+                    r.CreatedAt,
+                    Username = r.User.Username,
+                    ProductName = r.Product.Name,
+                    r.AdminReply,
+                    r.RepliedAt,
+                    r.IsHidden
+                })
+                .ToListAsync();
+
+            return Ok(reviews);
+        }
+
+        // ================= DELETE REVIEW (ADMIN ONLY) =================
+        [Authorize(Roles = "Admin")]
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteReview(int id)
+        {
+            var review = await _context.Reviews.FindAsync(id);
+            if (review == null)
+                return NotFound("Không tìm thấy bài đánh giá.");
+
+            _context.Reviews.Remove(review);
+            await _context.SaveChangesAsync();
+            return Ok("Xóa bài đánh giá thành công.");
         }
     }
 }
