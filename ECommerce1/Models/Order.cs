@@ -35,6 +35,8 @@ namespace ECommerce.Models
         public int PointsEarned { get; set; } = 0;
         public int PointsRedeemed { get; set; } = 0;
         public decimal DiscountFromPoints { get; set; } = 0;
+        
+        public string? Note { get; set; } // Ghi chú giao hàng từ khách hàng
 
         public virtual ICollection<OrderItem> OrderItems { get; set; }
     }

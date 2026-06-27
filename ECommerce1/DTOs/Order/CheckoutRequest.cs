@@ -13,5 +13,6 @@ namespace ECommerce1.DTOs.Order
         public string? PromotionCode { get; set; } // Mã giảm giá (nếu có)
         public string? PaymentMethod { get; set; } // COD, Stripe, Momo, etc.
         public int PointsToRedeem { get; set; } = 0;
+        public string? Note { get; set; } // Ghi chú giao hàng
     }
 }
