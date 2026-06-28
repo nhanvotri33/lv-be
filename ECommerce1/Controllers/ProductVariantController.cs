@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -26,7 +27,6 @@ namespace ECommerce1.Controllers
         {
             var query = _context.ProductVariants.AsQueryable();
 
-            // Cho phép lọc Variant theo ID Sản phẩm gốc (Ví dụ: Lấy tất cả màu của iPhone 15)
             if (productId.HasValue)
             {
                 query = query.Where(pv => pv.ProductId == productId.Value);
@@ -85,17 +85,30 @@ namespace ECommerce1.Controllers
         [Authorize]
         public async Task<IActionResult> Create([FromBody] ProductVariantRequest request)
         {
-            // Kiểm tra Product gốc có tồn tại không
             if (!await _context.Products.AnyAsync(p => p.Id == request.ProductId))
                 return BadRequest("Sản phẩm gốc (ProductId) không tồn tại.");
+
+            if (!ValidateAttributes(request.Attributes, out string valError))
+            {
+                return BadRequest(valError);
+            }
+
+            string finalSku = !string.IsNullOrEmpty(request.Sku) 
+                ? request.Sku.Trim().ToUpper() 
+                : await GenerateSkuAsync(request.ProductId, request.Attributes);
+
+            if (!string.IsNullOrEmpty(finalSku) && await _context.ProductVariants.AnyAsync(pv => pv.Sku.ToUpper() == finalSku))
+            {
+                return BadRequest($"Mã SKU '{finalSku}' đã tồn tại ở một biến thể khác.");
+            }
 
             var newVariant = new ProductVariant
             {
                 Name = request.Name,
-                Sku = !string.IsNullOrEmpty(request.Sku) ? request.Sku : GenerateSku(request.Name),
+                Sku = finalSku,
                 Price = request.Price,
                 TotalStock = request.TotalStock,
-                ReservedStock = 0, // Mới tạo thì chưa có ai mua
+                ReservedStock = 0,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
                 ProductId = request.ProductId,
@@ -119,23 +132,76 @@ namespace ECommerce1.Controllers
                 return BadRequest("Danh sách biến thể trống.");
 
             var productId = requests.First().ProductId;
-            if (!await _context.Products.AnyAsync(p => p.Id == productId))
+            var product = await _context.Products.Include(p => p.Brand).FirstOrDefaultAsync(p => p.Id == productId);
+            if (product == null)
                 return BadRequest("Sản phẩm gốc không tồn tại.");
 
-            var newVariants = requests.Select(request => new ProductVariant
+            string brandCode = product.Brand != null && !string.IsNullOrEmpty(product.Brand.BrandCode) ? product.Brand.BrandCode : "GEN";
+            string productCode = !string.IsNullOrEmpty(product.ProductCode) ? product.ProductCode : "PROD";
+
+            var newVariants = new List<ProductVariant>();
+
+            foreach (var request in requests)
             {
-                Name = request.Name,
-                Sku = !string.IsNullOrEmpty(request.Sku) ? request.Sku : GenerateSku(request.Name),
-                Price = request.Price,
-                TotalStock = request.TotalStock,
-                ReservedStock = 0,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow,
-                ProductId = request.ProductId,
-                ImageId = request.ImageId ?? "",
-                Attributes = request.Attributes ?? "{}",
-                IsActive = request.IsActive
-            }).ToList();
+                if (!ValidateAttributes(request.Attributes, out string valError))
+                {
+                    return BadRequest(valError);
+                }
+
+                string finalSku = request.Sku;
+                if (string.IsNullOrEmpty(finalSku))
+                {
+                    var attrParts = new List<string>();
+                    if (!string.IsNullOrEmpty(request.Attributes))
+                    {
+                        try
+                        {
+                            var attrs = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(request.Attributes);
+                            if (attrs != null)
+                            {
+                                var sortedKeys = attrs.Keys
+                                    .Where(k => k != "costPrice" && k != "chargeTax")
+                                    .OrderBy(k => k)
+                                    .ToList();
+
+                                foreach (var key in sortedKeys)
+                                {
+                                    string value = attrs[key];
+                                    string processedVal = ProcessAttributeValue(key, value);
+                                    if (!string.IsNullOrEmpty(processedVal))
+                                    {
+                                        attrParts.Add(processedVal);
+                                    }
+                                }
+                            }
+                        }
+                        catch {}
+                    }
+                    string suffix = attrParts.Count > 0 ? string.Join("-", attrParts) : string.Empty;
+                    finalSku = !string.IsNullOrEmpty(suffix) ? $"{brandCode}-{productCode}-{suffix}" : $"{brandCode}-{productCode}";
+                }
+                finalSku = finalSku.Trim().ToUpper();
+
+                if (!string.IsNullOrEmpty(finalSku) && (newVariants.Any(nv => nv.Sku == finalSku) || await _context.ProductVariants.AnyAsync(pv => pv.Sku.ToUpper() == finalSku)))
+                {
+                    return BadRequest($"Mã SKU '{finalSku}' bị trùng lặp.");
+                }
+
+                newVariants.Add(new ProductVariant
+                {
+                    Name = request.Name,
+                    Sku = finalSku,
+                    Price = request.Price,
+                    TotalStock = request.TotalStock,
+                    ReservedStock = 0,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                    ProductId = request.ProductId,
+                    ImageId = request.ImageId ?? "",
+                    Attributes = request.Attributes ?? "{}",
+                    IsActive = request.IsActive
+                });
+            }
 
             _context.ProductVariants.AddRange(newVariants);
             await _context.SaveChangesAsync();
@@ -158,13 +224,24 @@ namespace ECommerce1.Controllers
                     return BadRequest("Sản phẩm gốc (ProductId) không tồn tại.");
             }
 
+            if (!ValidateAttributes(request.Attributes, out string valError))
+            {
+                return BadRequest(valError);
+            }
+
+            string finalSku = !string.IsNullOrEmpty(request.Sku) 
+                ? request.Sku.Trim().ToUpper() 
+                : await GenerateSkuAsync(request.ProductId, request.Attributes);
+
+            if (!string.IsNullOrEmpty(finalSku) && await _context.ProductVariants.AnyAsync(pv => pv.Sku.ToUpper() == finalSku && pv.Id != id))
+            {
+                return BadRequest($"Mã SKU '{finalSku}' đã tồn tại ở một biến thể khác.");
+            }
+
             variant.Name = request.Name;
-            variant.Sku = !string.IsNullOrEmpty(request.Sku) ? request.Sku : GenerateSku(request.Name);
+            variant.Sku = finalSku;
             variant.Price = request.Price;
-            
-            // Tương tự, nếu quản lý kho phức tạp thì Update Stock nên dùng API riêng
             variant.TotalStock = request.TotalStock;
-            
             variant.ProductId = request.ProductId;
             variant.ImageId = request.ImageId ?? "";
             variant.Attributes = request.Attributes ?? "{}";
@@ -181,19 +258,20 @@ namespace ECommerce1.Controllers
         [Authorize]
         public async Task<IActionResult> Sync(int productId, [FromBody] List<ProductVariantRequest> requests)
         {
-            if (!await _context.Products.AnyAsync(p => p.Id == productId))
+            var product = await _context.Products.Include(p => p.Brand).FirstOrDefaultAsync(p => p.Id == productId);
+            if (product == null)
                 return BadRequest("Sản phẩm gốc không tồn tại.");
 
-            // 1. Lấy tất cả biến thể cũ từ DB
+            string brandCode = product.Brand != null && !string.IsNullOrEmpty(product.Brand.BrandCode) ? product.Brand.BrandCode : "GEN";
+            string productCode = !string.IsNullOrEmpty(product.ProductCode) ? product.ProductCode : "PROD";
+
             var existingVariants = await _context.ProductVariants
                 .Where(pv => pv.ProductId == productId)
                 .Include(pv => pv.OrderItems)
                 .ToListAsync();
 
-            // Danh sách ID từ Frontend gửi lên
             var incomingIds = requests.Select(r => r.Id).Where(id => id > 0).ToList();
 
-            // 2. Xóa (DELETE) những biến thể không còn trong danh sách gửi lên
             var toDelete = existingVariants.Where(ev => !incomingIds.Contains(ev.Id)).ToList();
             foreach (var variant in toDelete)
             {
@@ -204,16 +282,73 @@ namespace ECommerce1.Controllers
                 _context.ProductVariants.Remove(variant);
             }
 
-            // 3. Upsert (INSERT & UPDATE)
+            var skuMap = new Dictionary<string, string>();
+
+            foreach (var req in requests)
+            {
+                if (!ValidateAttributes(req.Attributes, out string valError))
+                {
+                    return BadRequest(valError);
+                }
+
+                string finalSku = req.Sku;
+                if (string.IsNullOrEmpty(finalSku))
+                {
+                    var attrParts = new List<string>();
+                    if (!string.IsNullOrEmpty(req.Attributes))
+                    {
+                        try
+                        {
+                            var attrs = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(req.Attributes);
+                            if (attrs != null)
+                            {
+                                var sortedKeys = attrs.Keys
+                                    .Where(k => k != "costPrice" && k != "chargeTax")
+                                    .OrderBy(k => k)
+                                    .ToList();
+
+                                foreach (var key in sortedKeys)
+                                {
+                                    string value = attrs[key];
+                                    string processedVal = ProcessAttributeValue(key, value);
+                                    if (!string.IsNullOrEmpty(processedVal))
+                                    {
+                                        attrParts.Add(processedVal);
+                                    }
+                                }
+                            }
+                        }
+                        catch {}
+                    }
+                    string suffix = attrParts.Count > 0 ? string.Join("-", attrParts) : string.Empty;
+                    finalSku = !string.IsNullOrEmpty(suffix) ? $"{brandCode}-{productCode}-{suffix}" : $"{brandCode}-{productCode}";
+                }
+                finalSku = finalSku.Trim().ToUpper();
+
+                if (skuMap.ContainsKey(finalSku))
+                {
+                    return BadRequest($"Mã SKU '{finalSku}' bị trùng lặp trong danh sách đồng bộ.");
+                }
+                skuMap.Add(finalSku, req.Name);
+
+                bool existsInDb = await _context.ProductVariants
+                    .AnyAsync(pv => pv.Sku.ToUpper() == finalSku && pv.ProductId != productId && (req.Id == 0 || pv.Id != req.Id));
+                if (existsInDb)
+                {
+                    return BadRequest($"Mã SKU '{finalSku}' đã được sử dụng bởi sản phẩm khác.");
+                }
+
+                req.Sku = finalSku;
+            }
+
             foreach (var req in requests)
             {
                 if (req.Id == 0)
                 {
-                    // Thêm mới
                     var newVariant = new ProductVariant
                     {
                         Name = req.Name,
-                        Sku = !string.IsNullOrEmpty(req.Sku) ? req.Sku : GenerateSku(req.Name),
+                        Sku = req.Sku,
                         Price = req.Price,
                         TotalStock = req.TotalStock,
                         ReservedStock = 0,
@@ -228,12 +363,11 @@ namespace ECommerce1.Controllers
                 }
                 else
                 {
-                    // Cập nhật
                     var existing = existingVariants.FirstOrDefault(ev => ev.Id == req.Id);
                     if (existing != null)
                     {
                         existing.Name = req.Name;
-                        existing.Sku = !string.IsNullOrEmpty(req.Sku) ? req.Sku : GenerateSku(req.Name);
+                        existing.Sku = req.Sku;
                         existing.Price = req.Price;
                         existing.TotalStock = req.TotalStock;
                         existing.ImageId = req.ImageId ?? "";
@@ -254,7 +388,7 @@ namespace ECommerce1.Controllers
         public async Task<IActionResult> Delete(int id)
         {
             var variant = await _context.ProductVariants
-                .Include(pv => pv.OrderItems) // Kiểm tra xem Variant này đã có người mua chưa
+                .Include(pv => pv.OrderItems)
                 .FirstOrDefaultAsync(pv => pv.Id == id);
 
             if (variant == null)
@@ -269,12 +403,11 @@ namespace ECommerce1.Controllers
             return Ok("Xóa biến thể sản phẩm thành công.");
         }
 
-        private string GenerateSku(string name)
+        private string RemoveDiacritics(string text)
         {
-            if (string.IsNullOrEmpty(name)) return string.Empty;
-            
-            // Remove diacritics
-            string temp = name;
+            if (string.IsNullOrEmpty(text)) return string.Empty;
+
+            string temp = text;
             string[] VietnameseSigns = new string[]
             {
                 "aAeEoOuUiIdDyY",
@@ -282,9 +415,9 @@ namespace ECommerce1.Controllers
                 "ÁÀẠẢÃÂẤẦẬẨẪĂẮẰẶẲẴ",
                 "éèẹẻẽêếềệểễ",
                 "ÉÈẸẺẼÊẾỀỆỂỄ",
-                "óòọỏõôốồộổỗơớờợởỡ",
+                "óòọỏõôồốộổỗơờớợởỡ",
                 "ÓÒỌỎÕÔỐỒỘỔỖƠỚỜỢỞỠ",
-                "úùụủũưứừựửữ",
+                "úùụủũưừứựửữ",
                 "ÚÙỤỦŨƯỨỪỰỬỮ",
                 "íìịỉĩ",
                 "ÍÌỊỈĨ",
@@ -300,22 +433,131 @@ namespace ECommerce1.Controllers
                     temp = temp.Replace(VietnameseSigns[i][j].ToString(), VietnameseSigns[0][i - 1].ToString());
                 }
             }
-            
-            // Replace non-alphanumeric (except hyphens and spaces)
-            var chars = temp.ToCharArray();
-            for (int i = 0; i < chars.Length; i++)
+            return temp;
+        }
+
+        private string ProcessAttributeValue(string attrName, string attrValue)
+        {
+            if (string.IsNullOrEmpty(attrValue)) return string.Empty;
+
+            string cleanVal = System.Text.RegularExpressions.Regex.Replace(attrValue.Trim(), @"\s+", " ");
+
+            if (attrName.Contains("Dung lượng") || attrName.Contains("RAM") || attrName.Contains("ROM"))
             {
-                if (!char.IsLetterOrDigit(chars[i]) && chars[i] != '-' && chars[i] != ' ')
+                var digits = cleanVal.Where(char.IsDigit).ToArray();
+                return new string(digits);
+            }
+
+            var words = cleanVal.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length == 1)
+            {
+                string unsigned = RemoveDiacritics(words[0]);
+                var lettersAndDigits = unsigned.Where(char.IsLetterOrDigit).ToArray();
+                string result = new string(lettersAndDigits).ToUpper();
+                return result.Length > 5 ? result.Substring(0, 5) : result;
+            }
+            else if (words.Length > 1)
+            {
+                var firstLetters = words.Select(w => {
+                    string unsigned = RemoveDiacritics(w);
+                    var validChars = unsigned.Where(char.IsLetterOrDigit).ToArray();
+                    return validChars.Length > 0 ? validChars[0] : '\0';
+                }).Where(c => c != '\0').ToArray();
+
+                string result = new string(firstLetters).ToUpper();
+                return result.Length > 10 ? result.Substring(0, 10) : result;
+            }
+
+            return string.Empty;
+        }
+
+        private async Task<string> GenerateSkuAsync(int productId, string attributesJson)
+        {
+            var product = await _context.Products
+                .Include(p => p.Brand)
+                .FirstOrDefaultAsync(p => p.Id == productId);
+
+            if (product == null) return string.Empty;
+
+            string brandCode = product.Brand != null && !string.IsNullOrEmpty(product.Brand.BrandCode) 
+                ? product.Brand.BrandCode 
+                : "GEN";
+
+            string productCode = !string.IsNullOrEmpty(product.ProductCode) 
+                ? product.ProductCode 
+                : "PROD";
+
+            var attrParts = new List<string>();
+
+            if (!string.IsNullOrEmpty(attributesJson))
+            {
+                try
                 {
-                    chars[i] = '-';
+                    var attrs = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(attributesJson);
+                    if (attrs != null)
+                    {
+                        var sortedKeys = attrs.Keys
+                            .Where(k => k != "costPrice" && k != "chargeTax")
+                            .OrderBy(k => k)
+                            .ToList();
+
+                        foreach (var key in sortedKeys)
+                        {
+                            string value = attrs[key];
+                            string processedVal = ProcessAttributeValue(key, value);
+                            if (!string.IsNullOrEmpty(processedVal))
+                            {
+                                attrParts.Add(processedVal);
+                            }
+                        }
+                    }
+                }
+                catch
+                {
+                    // Ignore
                 }
             }
-            string result = new string(chars);
-            
-            // Replace multiple spaces/hyphens with a single hyphen
-            result = System.Text.RegularExpressions.Regex.Replace(result, @"[\s\-]+", "-");
-            
-            return result.ToUpper().Trim('-');
+
+            string suffix = attrParts.Count > 0 ? string.Join("-", attrParts) : string.Empty;
+            string finalSku = !string.IsNullOrEmpty(suffix) 
+                ? $"{brandCode}-{productCode}-{suffix}" 
+                : $"{brandCode}-{productCode}";
+
+            return finalSku.ToUpper();
+        }
+
+        private bool ValidateAttributes(string attributesJson, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (string.IsNullOrEmpty(attributesJson)) return true;
+
+            try
+            {
+                var attrs = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(attributesJson);
+                if (attrs != null)
+                {
+                    foreach (var kvp in attrs)
+                    {
+                        string name = kvp.Key;
+                        string value = kvp.Value;
+
+                        if (name == "Màu sắc" || name == "Kích thước")
+                        {
+                            if (System.Text.RegularExpressions.Regex.IsMatch(value.Trim(), @"^\d+$"))
+                            {
+                                errorMessage = $"Thuộc tính '{name}' không được phép chỉ chứa toàn các con số.";
+                                return false;
+                            }
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore
+            }
+
+            return true;
         }
     }
 }
