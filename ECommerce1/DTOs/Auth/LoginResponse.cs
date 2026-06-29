@@ -7,5 +7,6 @@ namespace ECommerce1.DTOs.Auth
         public Guid Id { get; set; }
         public string Role { get; set; }
         public int RewardPoints { get; set; }
+        public int AccumulatedPoints { get; set; }
     }
 }

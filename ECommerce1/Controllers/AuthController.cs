@@ -85,7 +85,8 @@ namespace ECommerce1.Controllers
                 RefreshToken = refreshToken,
                 Id = user.Id,
                 Role = user.Role,
-                RewardPoints = user.RewardPoints
+                RewardPoints = user.RewardPoints,
+                AccumulatedPoints = user.AccumulatedPoints
             };
 
             return Ok(response);
@@ -144,7 +145,8 @@ namespace ECommerce1.Controllers
                     RefreshToken = refreshToken,
                     Id = user.Id,
                     Role = user.Role,
-                    RewardPoints = user.RewardPoints
+                    RewardPoints = user.RewardPoints,
+                    AccumulatedPoints = user.AccumulatedPoints
                 });
             }
             catch (Exception ex)

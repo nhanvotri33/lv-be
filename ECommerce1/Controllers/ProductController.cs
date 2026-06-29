@@ -54,6 +54,7 @@ namespace ECommerce1.Controllers
 
             var query = _context.Products
                 .Include(p => p.Brand)
+                .Include(p => p.Reviews)
                 .AsQueryable();
 
             if (!includeInactive)
@@ -88,7 +89,9 @@ namespace ECommerce1.Controllers
                 MainImage = p.MainImage,
                 Images = p.Images,
                 IsAvailable = p.IsActive && validCategoryIds.Contains(p.CategoryId) && (p.BrandId == null || (p.Brand != null && p.Brand.IsActive != false)),
-                BrandIsActive = p.Brand != null ? (bool?)p.Brand.IsActive : null
+                BrandIsActive = p.Brand != null ? (bool?)p.Brand.IsActive : null,
+                AverageRating = p.Reviews != null && p.Reviews.Any(r => !r.IsHidden) ? p.Reviews.Where(r => !r.IsHidden).Average(r => r.Rating) : 5.0,
+                ReviewCount = p.Reviews != null ? p.Reviews.Count(r => !r.IsHidden) : 0
             })
             .ToList();
 
@@ -98,7 +101,10 @@ namespace ECommerce1.Controllers
         [HttpGet("{id}")]
         public async Task<IActionResult> GetById(int id)
         {
-            var product = await _context.Products.Include(p => p.Brand).FirstOrDefaultAsync(p => p.Id == id);
+            var product = await _context.Products
+                .Include(p => p.Brand)
+                .Include(p => p.Reviews)
+                .FirstOrDefaultAsync(p => p.Id == id);
 
             if (product == null)
                 return NotFound("Không tìm thấy sản phẩm.");
@@ -129,7 +135,9 @@ namespace ECommerce1.Controllers
                 MainImage = product.MainImage,
                 Images = product.Images,
                 IsAvailable = isAvailable,
-                BrandIsActive = product.Brand != null ? (bool?)product.Brand.IsActive : null
+                BrandIsActive = product.Brand != null ? (bool?)product.Brand.IsActive : null,
+                AverageRating = product.Reviews != null && product.Reviews.Any(r => !r.IsHidden) ? product.Reviews.Where(r => !r.IsHidden).Average(r => r.Rating) : 5.0,
+                ReviewCount = product.Reviews != null ? product.Reviews.Count(r => !r.IsHidden) : 0
             });
         }
 
