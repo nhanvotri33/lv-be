@@ -31,10 +31,13 @@ namespace ECommerce1.Controllers
             if (!Guid.TryParse(userIdString, out Guid userId))
                 return Unauthorized();
 
+            // 1. DATABASE LÀM VIỆC: Chỉ truy vấn thông tin cơ bản và 2 luồng điểm thô của User
             var user = await _context.Users.FindAsync(userId);
             if (user == null)
                 return NotFound("Không tìm thấy người dùng.");
 
+            // 2. BACKEND LÀM VIỆC: Đóng gói dữ liệu thô vào UserResponse DTO để trả về
+            // (Hạng thành viên của User sẽ được tính toán động dựa trên trường AccumulatedPoints ở phía dưới)
             var response = new UserResponse
             {
                 Id = user.Id,
@@ -42,11 +45,13 @@ namespace ECommerce1.Controllers
                 Email = user.Email,
                 Role = user.Role,
                 IsActive = user.IsActive,
-                RewardPoints = user.RewardPoints,
+                RewardPoints = user.RewardPoints,           // Điểm khả dụng để tiêu dùng
+                AccumulatedPoints = user.AccumulatedPoints, // Điểm tích lũy trọn đời xét hạng
                 CreatedAt = user.CreatedAt,
                 LastLoginAt = user.LastLoginAt
             };
 
+            // 3. FRONTEND NHẬN VIỆC: Frontend gọi API này để lấy thông tin điểm thô và tự động map thành Rank tương ứng (Đồng/Bạc/Vàng) kèm style màu sắc
             return Ok(response);
         }
 
@@ -136,6 +141,7 @@ namespace ECommerce1.Controllers
                     Role = u.Role,
                     IsActive = u.IsActive,
                     RewardPoints = u.RewardPoints,
+                    AccumulatedPoints = u.AccumulatedPoints,
                     CreatedAt = u.CreatedAt,
                     LastLoginAt = u.LastLoginAt
                 })

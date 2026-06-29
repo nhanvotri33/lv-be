@@ -26,5 +26,7 @@ namespace ECommerce1.DTOs.Product
         public string Images { get; set; }
         public bool IsAvailable { get; set; }
         public bool? BrandIsActive { get; set; }
+        public double AverageRating { get; set; }
+        public int ReviewCount { get; set; }
     }
 }

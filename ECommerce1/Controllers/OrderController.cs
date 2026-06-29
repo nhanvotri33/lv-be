@@ -359,7 +359,8 @@ namespace ECommerce1.Controllers
                     TotalPaid = finalPrice,
                     PointsEarned = pointsEarned,
                     PointsRedeemed = pointsRedeemed,
-                    NewPointsBalance = user.RewardPoints
+                    NewPointsBalance = user.RewardPoints,
+                    NewAccumulatedPoints = user.AccumulatedPoints
                 });
             }
             catch (Exception ex)
@@ -479,6 +480,7 @@ namespace ECommerce1.Controllers
                 if (user != null)
                 {
                     user.RewardPoints += order.PointsEarned;
+                    user.AccumulatedPoints += order.PointsEarned;
                 }
             }
             // 2. Chuyển từ Đang giữ hàng -> Cancelled (Hủy) hoặc Return_failed (Giao hàng thất bại / Hoàn hàng)
@@ -519,6 +521,9 @@ namespace ECommerce1.Controllers
                 {
                     user.RewardPoints -= order.PointsEarned;
                     if (user.RewardPoints < 0) user.RewardPoints = 0;
+
+                    user.AccumulatedPoints -= order.PointsEarned;
+                    if (user.AccumulatedPoints < 0) user.AccumulatedPoints = 0;
 
                     user.RewardPoints += order.PointsRedeemed;
                 }

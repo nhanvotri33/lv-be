@@ -29,7 +29,11 @@ namespace ECommerce1.Models
         public DateTime? UpdatedAt { get; set; }
         public DateTime? LastLoginAt { get; set; }
 
+        // Điểm khả dụng dùng để tiêu dùng (Ví điểm - Tăng khi nhận hàng, giảm khi đổi mã giảm giá)
         public int RewardPoints { get; set; } = 0;
+
+        // Điểm tích lũy trọn đời dùng để xét hạng (Chỉ tăng khi nhận hàng, KHÔNG GIẢM khi tiêu điểm)
+        public int AccumulatedPoints { get; set; } = 0;
 
         // Navigation
         public ICollection<RefreshToken>? RefreshTokens { get; set; }
