@@ -16,6 +16,7 @@ namespace ECommerce.Models
 
         public string Slug { get; set; }
         public string Description { get; set; }
+        public string? Specs { get; set; }
         public decimal BasePrice { get; set; }
         public decimal? OriginalPrice { get; set; }
         public int TotalStock { get; set; }

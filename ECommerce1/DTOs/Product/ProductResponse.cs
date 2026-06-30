@@ -9,6 +9,7 @@ namespace ECommerce1.DTOs.Product
         public string Slug { get; set; }
         public string ProductCode { get; set; }
         public string Description { get; set; }
+        public string? Specs { get; set; }
         public decimal BasePrice { get; set; }
         public decimal? OriginalPrice { get; set; }
         public int TotalStock { get; set; }

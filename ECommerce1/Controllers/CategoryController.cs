@@ -81,7 +81,8 @@ namespace ECommerce1.Controllers
                     ProductsCount = c.Products.Count,
                     IsActive = c.IsActive,
                     CreatedAt = c.CreatedAt,
-                    UpdatedAt = c.UpdatedAt
+                    UpdatedAt = c.UpdatedAt,
+                    SpecsTemplate = c.SpecsTemplate
                 })
                 .ToListAsync();
 
@@ -123,7 +124,8 @@ namespace ECommerce1.Controllers
                 ProductsCount = category.Products?.Count ?? 0,
                 IsActive = category.IsActive,
                 CreatedAt = category.CreatedAt,
-                UpdatedAt = category.UpdatedAt
+                UpdatedAt = category.UpdatedAt,
+                SpecsTemplate = category.SpecsTemplate
             });
         }
 
@@ -165,7 +167,8 @@ namespace ECommerce1.Controllers
                         ProductsCount = c.Products?.Count ?? 0,
                         IsActive = c.IsActive,
                         CreatedAt = c.CreatedAt,
-                        UpdatedAt = c.UpdatedAt
+                        UpdatedAt = c.UpdatedAt,
+                        SpecsTemplate = c.SpecsTemplate
                     }).ToList();
 
                 return Ok(new
@@ -189,7 +192,8 @@ namespace ECommerce1.Controllers
                     ProductsCount = c.Products?.Count ?? 0,
                     IsActive = c.IsActive,
                     CreatedAt = c.CreatedAt,
-                    UpdatedAt = c.UpdatedAt
+                    UpdatedAt = c.UpdatedAt,
+                    SpecsTemplate = c.SpecsTemplate
                 }).ToList();
 
                 return Ok(new
@@ -224,6 +228,7 @@ namespace ECommerce1.Controllers
                 MetaDescription = request.MetaDescription,
                 ParentId = request.ParentId,
                 IsActive = request.IsActive,
+                SpecsTemplate = request.SpecsTemplate,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -322,6 +327,7 @@ namespace ECommerce1.Controllers
             category.MetaDescription = request.MetaDescription;
             category.ParentId = request.ParentId;
             category.IsActive = request.IsActive;
+            category.SpecsTemplate = request.SpecsTemplate;
             category.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();

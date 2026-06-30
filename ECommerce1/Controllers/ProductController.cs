@@ -73,6 +73,7 @@ namespace ECommerce1.Controllers
                 Slug = p.Slug,
                 ProductCode = p.ProductCode,
                 Description = p.Description,
+                Specs = p.Specs,
                 BasePrice = p.BasePrice,
                 OriginalPrice = p.OriginalPrice,
                 TotalStock = p.TotalStock,
@@ -119,6 +120,7 @@ namespace ECommerce1.Controllers
                 Slug = product.Slug,
                 ProductCode = product.ProductCode,
                 Description = product.Description,
+                Specs = product.Specs,
                 BasePrice = product.BasePrice,
                 OriginalPrice = product.OriginalPrice,
                 TotalStock = product.TotalStock,
@@ -165,6 +167,7 @@ namespace ECommerce1.Controllers
                 Slug = request.Slug,
                 ProductCode = request.ProductCode,
                 Description = request.Description,
+                Specs = request.Specs,
                 BasePrice = request.BasePrice,
                 OriginalPrice = request.OriginalPrice,
                 TotalStock = request.TotalStock,
@@ -212,6 +215,7 @@ namespace ECommerce1.Controllers
             product.Slug = request.Slug;
             product.ProductCode = request.ProductCode;
             product.Description = request.Description;
+            product.Specs = request.Specs;
             product.BasePrice = request.BasePrice;
             product.OriginalPrice = request.OriginalPrice;
             

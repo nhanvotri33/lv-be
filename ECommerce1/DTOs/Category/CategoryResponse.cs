@@ -17,5 +17,6 @@ namespace ECommerce1.DTOs.Category
         public bool IsActive { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
+        public string? SpecsTemplate { get; set; }
     }
 }
