@@ -25,6 +25,7 @@ namespace ECommerce.Models
         public string IconUrl { get; set; }
         public string MetaTitle { get; set; }
         public string MetaDescription { get; set; }
+        public string? SpecsTemplate { get; set; }
 
         public int? ParentId { get; set; }
         [ForeignKey("ParentId")]
