@@ -1,5 +1,6 @@
 using ECommerce.Models;
 using ECommerce1.DTOs.ProductVariant;
+using ECommerce1.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -15,10 +16,12 @@ namespace ECommerce1.Controllers
     public class ProductVariantController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IFileService _fileService;
 
-        public ProductVariantController(ApplicationDbContext context)
+        public ProductVariantController(ApplicationDbContext context, IFileService fileService)
         {
             _context = context;
+            _fileService = fileService;
         }
 
         // ================= READ: Lấy danh sách =================
@@ -238,6 +241,11 @@ namespace ECommerce1.Controllers
                 return BadRequest($"Mã SKU '{finalSku}' đã tồn tại ở một biến thể khác.");
             }
 
+            if (variant.ImageId != request.ImageId)
+            {
+                _fileService.DeleteImage(variant.ImageId);
+            }
+
             variant.Name = request.Name;
             variant.Sku = finalSku;
             variant.Price = request.Price;
@@ -278,6 +286,10 @@ namespace ECommerce1.Controllers
                 if (variant.OrderItems != null && variant.OrderItems.Any())
                 {
                     return BadRequest($"Không thể xóa biến thể '{variant.Name}' vì đã nằm trong lịch sử đơn hàng của khách.");
+                }
+                if (!string.IsNullOrEmpty(variant.ImageId))
+                {
+                    _fileService.DeleteImage(variant.ImageId);
                 }
                 _context.ProductVariants.Remove(variant);
             }
@@ -366,6 +378,10 @@ namespace ECommerce1.Controllers
                     var existing = existingVariants.FirstOrDefault(ev => ev.Id == req.Id);
                     if (existing != null)
                     {
+                        if (existing.ImageId != req.ImageId)
+                        {
+                            _fileService.DeleteImage(existing.ImageId);
+                        }
                         existing.Name = req.Name;
                         existing.Sku = req.Sku;
                         existing.Price = req.Price;
@@ -396,6 +412,11 @@ namespace ECommerce1.Controllers
 
             if (variant.OrderItems != null && variant.OrderItems.Any())
                 return BadRequest("Không thể xóa biến thể này vì đã nằm trong lịch sử đơn hàng của khách.");
+
+            if (!string.IsNullOrEmpty(variant.ImageId))
+            {
+                _fileService.DeleteImage(variant.ImageId);
+            }
 
             _context.ProductVariants.Remove(variant);
             await _context.SaveChangesAsync();

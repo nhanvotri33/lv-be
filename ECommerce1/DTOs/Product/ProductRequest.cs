@@ -17,5 +17,6 @@ namespace ECommerce1.DTOs.Product
         public string ThumbnailImage { get; set; } = string.Empty;
         public string MainImage { get; set; } = string.Empty;
         public string Images { get; set; } = string.Empty;
+        public string? VideoUrl { get; set; }
     }
 }

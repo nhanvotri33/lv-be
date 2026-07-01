@@ -1,5 +1,6 @@
 using ECommerce.Models;
 using ECommerce1.DTOs.Product;
+using ECommerce1.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -14,10 +15,12 @@ namespace ECommerce1.Controllers
     public class ProductController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IFileService _fileService;
 
-        public ProductController(ApplicationDbContext context)
+        public ProductController(ApplicationDbContext context, IFileService fileService)
         {
             _context = context;
+            _fileService = fileService;
         }
 
         private async Task<HashSet<int>> GetValidCategoryIdsAsync()
@@ -89,6 +92,7 @@ namespace ECommerce1.Controllers
                 ThumbnailImage = p.ThumbnailImage,
                 MainImage = p.MainImage,
                 Images = p.Images,
+                VideoUrl = p.VideoUrl,
                 IsAvailable = p.IsActive && validCategoryIds.Contains(p.CategoryId) && (p.BrandId == null || (p.Brand != null && p.Brand.IsActive != false)),
                 BrandIsActive = p.Brand != null ? (bool?)p.Brand.IsActive : null,
                 AverageRating = p.Reviews != null && p.Reviews.Any(r => !r.IsHidden) ? p.Reviews.Where(r => !r.IsHidden).Average(r => r.Rating) : 5.0,
@@ -136,6 +140,7 @@ namespace ECommerce1.Controllers
                 ThumbnailImage = product.ThumbnailImage,
                 MainImage = product.MainImage,
                 Images = product.Images,
+                VideoUrl = product.VideoUrl,
                 IsAvailable = isAvailable,
                 BrandIsActive = product.Brand != null ? (bool?)product.Brand.IsActive : null,
                 AverageRating = product.Reviews != null && product.Reviews.Any(r => !r.IsHidden) ? product.Reviews.Where(r => !r.IsHidden).Average(r => r.Rating) : 5.0,
@@ -180,7 +185,8 @@ namespace ECommerce1.Controllers
                 BrandId = request.BrandId,
                 ThumbnailImage = request.ThumbnailImage,
                 MainImage = request.MainImage,
-                Images = request.Images
+                Images = request.Images,
+                VideoUrl = request.VideoUrl
             };
 
             _context.Products.Add(newProduct);
@@ -211,6 +217,24 @@ namespace ECommerce1.Controllers
                 return BadRequest("Mã này đã tồn tại.");
             }
 
+            if (product.ThumbnailImage != request.ThumbnailImage)
+            {
+                _fileService.DeleteImage(product.ThumbnailImage);
+            }
+            if (product.MainImage != request.MainImage)
+            {
+                _fileService.DeleteImage(product.MainImage);
+            }
+
+            // Diff gallery images
+            var oldImages = ParseImageUrls(product.Images);
+            var newImages = ParseImageUrls(request.Images);
+            var deletedImages = oldImages.Except(newImages, StringComparer.OrdinalIgnoreCase);
+            foreach (var imgUrl in deletedImages)
+            {
+                _fileService.DeleteImage(imgUrl);
+            }
+
             product.Name = request.Name;
             product.Slug = request.Slug;
             product.ProductCode = request.ProductCode;
@@ -229,11 +253,34 @@ namespace ECommerce1.Controllers
             product.ThumbnailImage = request.ThumbnailImage;
             product.MainImage = request.MainImage;
             product.Images = request.Images;
+            product.VideoUrl = request.VideoUrl;
             product.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
 
             return Ok("Cập nhật sản phẩm thành công.");
+        }
+
+        private List<string> ParseImageUrls(string imagesStr)
+        {
+            if (string.IsNullOrEmpty(imagesStr)) return new List<string>();
+            
+            imagesStr = imagesStr.Trim();
+            if (imagesStr.StartsWith("[") && imagesStr.EndsWith("]"))
+            {
+                try
+                {
+                    return System.Text.Json.JsonSerializer.Deserialize<List<string>>(imagesStr) ?? new List<string>();
+                }
+                catch
+                {
+                    // Fallback to split if JSON parse fails
+                }
+            }
+            
+            return imagesStr.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                            .Select(s => s.Trim())
+                            .ToList();
         }
 
         // ================= DELETE: Cần đăng nhập =================
