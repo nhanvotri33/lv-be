@@ -1,5 +1,6 @@
 using ECommerce.Models;
 using ECommerce1.DTOs.Brand;
+using ECommerce1.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -14,10 +15,12 @@ namespace ECommerce1.Controllers
     public class BrandController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IFileService _fileService;
 
-        public BrandController(ApplicationDbContext context)
+        public BrandController(ApplicationDbContext context, IFileService fileService)
         {
             _context = context;
+            _fileService = fileService;
         }
 
         // GET: api/Brand
@@ -238,6 +241,11 @@ namespace ECommerce1.Controllers
                 return BadRequest("Mã này đã tồn tại.");
             }
 
+            if (brand.ImageUrl != request.ImageUrl)
+            {
+                _fileService.DeleteImage(brand.ImageUrl);
+            }
+
             brand.Name = request.Name;
             brand.Slug = request.Slug;
             brand.BrandCode = request.BrandCode;
@@ -267,6 +275,11 @@ namespace ECommerce1.Controllers
             if (brand.Products != null && brand.Products.Any())
             {
                 return BadRequest("Không thể xóa thương hiệu đang có sản phẩm. Vui lòng xóa sản phẩm trước hoặc đổi thương hiệu cho sản phẩm.");
+            }
+
+            if (!string.IsNullOrEmpty(brand.ImageUrl))
+            {
+                _fileService.DeleteImage(brand.ImageUrl);
             }
 
             _context.Brands.Remove(brand);

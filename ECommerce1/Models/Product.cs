@@ -43,6 +43,7 @@ namespace ECommerce.Models
         public string ThumbnailImage { get; set; }
         public string MainImage { get; set; }
         public string Images { get; set; } // Có thể lưu chuỗi JSON hoặc mảng tùy database
+        public string? VideoUrl { get; set; }
 
         public virtual ICollection<ProductVariant> ProductVariants { get; set; }
         public virtual ICollection<Review> Reviews { get; set; }

@@ -25,6 +25,7 @@ namespace ECommerce1.DTOs.Product
         public string ThumbnailImage { get; set; }
         public string MainImage { get; set; }
         public string Images { get; set; }
+        public string? VideoUrl { get; set; }
         public bool IsAvailable { get; set; }
         public bool? BrandIsActive { get; set; }
         public double AverageRating { get; set; }

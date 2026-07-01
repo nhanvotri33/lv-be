@@ -1,5 +1,6 @@
 using ECommerce.Models;
 using ECommerce1.DTOs.Category;
+using ECommerce1.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -14,10 +15,12 @@ namespace ECommerce1.Controllers
     public class CategoryController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IFileService _fileService;
 
-        public CategoryController(ApplicationDbContext context)
+        public CategoryController(ApplicationDbContext context, IFileService fileService)
         {
             _context = context;
+            _fileService = fileService;
         }
 
         private async Task<HashSet<int>> GetValidCategoryIdsAsync()
@@ -318,6 +321,11 @@ namespace ECommerce1.Controllers
                 return BadRequest("Mã này đã tồn tại.");
             }
 
+            if (category.IconUrl != request.IconUrl)
+            {
+                _fileService.DeleteImage(category.IconUrl);
+            }
+
             category.Name = request.Name;
             category.Slug = request.Slug;
             category.CategoryCode = request.CategoryCode;
@@ -352,6 +360,11 @@ namespace ECommerce1.Controllers
 
             if (await _context.Categories.AnyAsync(c => c.ParentId == id))
                 return BadRequest("Không thể xóa vì danh mục này có chứa danh mục con.");
+
+            if (!string.IsNullOrEmpty(category.IconUrl))
+            {
+                _fileService.DeleteImage(category.IconUrl);
+            }
 
             _context.Categories.Remove(category);
             await _context.SaveChangesAsync();

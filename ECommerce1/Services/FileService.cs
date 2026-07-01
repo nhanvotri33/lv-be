@@ -12,7 +12,8 @@ namespace ECommerce1.Services
 {
     public interface IFileService
     {
-        Task<string> UploadImageAsync(IFormFile file);
+        Task<string> UploadImageAsync(IFormFile file, string subFolder = "general");
+        void DeleteImage(string relativePath);
     }
 
     public class FileService : IFileService
@@ -26,14 +27,14 @@ namespace ECommerce1.Services
             _config = config;
         }
 
-        public async Task<string> UploadImageAsync(IFormFile file)
+        public async Task<string> UploadImageAsync(IFormFile file, string subFolder = "general")
         {
             if (file == null || file.Length == 0)
                 throw new ArgumentException("File không hợp lệ.");
 
             ValidateImageFile(file);
 
-            return await UploadToLocalAsync(file);
+            return await UploadToLocalAsync(file, subFolder);
         }
 
         private void ValidateImageFile(IFormFile file)
@@ -98,16 +99,118 @@ namespace ECommerce1.Services
             }
         }
 
-        private async Task<string> UploadToLocalAsync(IFormFile file)
+        private string Slugify(string phrase)
         {
-            string uploadFolder = Path.Combine(_env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot"), "uploads");
+            if (string.IsNullOrEmpty(phrase)) return "";
+            
+            string str = phrase.ToLowerInvariant();
+            
+            string[] vietnameseSigns = new string[]
+            {
+                "aAeEoOuUiIdDyY",
+                "áàạảãâấầậẩẫăắằặẳẵ",
+                "ÁÀẠẢÃÂẤẦẬẨẪĂẮẰẶẲẴ",
+                "éèẹẻẽêếềệểễ",
+                "ÉÈẸẺẼÊẾỀỆỂỄ",
+                "óòọỏõôốồộổỗơớờợởỡ",
+                "ÓÒỌỎÕÔỐỒỘỔỖƠỚỜỢỔỠ",
+                "úùụủũưứừựửữ",
+                "ÚÙỤỦŨƯỨỪỰỬỮ",
+                "íìịỉĩ",
+                "ÍÌỊỈĨ",
+                "đ",
+                "Đ",
+                "ýỳỵỷỹ",
+                "ÝỲỴỶỸ"
+            };
+
+            for (int i = 1; i < vietnameseSigns.Length; i++)
+            {
+                for (int j = 0; j < vietnameseSigns[i].Length; j++)
+                {
+                    str = str.Replace(vietnameseSigns[i][j], vietnameseSigns[0][i - 1]);
+                }
+            }
+
+            // Remove invalid characters
+            str = Regex.Replace(str, @"[^a-z0-9\s-]", "");
+            
+            // Convert multiple spaces/hyphens into single hyphen
+            str = Regex.Replace(str, @"\s+", " ").Trim();
+            str = str.Substring(0, str.Length <= 45 ? str.Length : 45).Trim();
+            str = Regex.Replace(str, @"\s", "-"); // hyphens
+            
+            return str;
+        }
+
+        public void DeleteImage(string relativePath)
+        {
+            if (string.IsNullOrEmpty(relativePath)) return;
+
+            // Loại bỏ các hình ảnh mặc định không được xóa
+            var normalizedPath = relativePath.ToLowerInvariant();
+            if (normalizedPath.Contains("default") || normalizedPath.Contains("no-image") || normalizedPath.Contains("placeholder"))
+            {
+                return;
+            }
+
+            try
+            {
+                string cleanRelativePath = relativePath;
+
+                // Nếu là URL tuyệt đối (chứa ://), ta tách lấy phần path sau domain
+                if (relativePath.Contains("://"))
+                {
+                    try
+                    {
+                        var uri = new Uri(relativePath);
+                        cleanRelativePath = uri.AbsolutePath;
+                    }
+                    catch
+                    {
+                        int idx = relativePath.IndexOf("uploads/", StringComparison.OrdinalIgnoreCase);
+                        if (idx >= 0)
+                        {
+                            cleanRelativePath = relativePath.Substring(idx);
+                        }
+                    }
+                }
+
+                // Loại bỏ ký tự / ở đầu nếu có để kết hợp đường dẫn chính xác
+                cleanRelativePath = cleanRelativePath.TrimStart('/');
+                
+                string webRootPath = _env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+                string physicalPath = Path.Combine(webRootPath, cleanRelativePath);
+
+                if (File.Exists(physicalPath))
+                {
+                    File.Delete(physicalPath);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Lỗi khi xóa file ảnh vật lý: {ex.Message}");
+            }
+        }
+
+        private async Task<string> UploadToLocalAsync(IFormFile file, string subFolder)
+        {
+            string webRoot = _env.WebRootPath ?? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot");
+            string uploadFolder = Path.Combine(webRoot, "uploads", subFolder);
             if (!Directory.Exists(uploadFolder))
             {
                 Directory.CreateDirectory(uploadFolder);
             }
 
             string fileExtension = Path.GetExtension(file.FileName);
-            string uniqueFileName = Guid.NewGuid().ToString() + fileExtension;
+            string rawFileName = Path.GetFileNameWithoutExtension(file.FileName);
+            string cleanName = Slugify(rawFileName);
+            if (string.IsNullOrEmpty(cleanName))
+            {
+                cleanName = "image";
+            }
+
+            string uniqueFileName = $"{cleanName}-{Guid.NewGuid().ToString().Substring(0, 8)}{fileExtension}";
             string filePath = Path.Combine(uploadFolder, uniqueFileName);
 
             using (var fileStream = new FileStream(filePath, FileMode.Create))
@@ -115,7 +218,7 @@ namespace ECommerce1.Services
                 await file.CopyToAsync(fileStream);
             }
 
-            return $"/uploads/{uniqueFileName}";
+            return $"/uploads/{subFolder}/{uniqueFileName}";
         }
     }
 }
