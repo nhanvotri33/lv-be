@@ -10,6 +10,7 @@ namespace ECommerce1.DTOs.ProductVariant
         public int ProductId { get; set; }
         public string? ImageId { get; set; }
         public string? Attributes { get; set; }
+        public string? SpecsOverride { get; set; }
         public bool IsActive { get; set; } = true;
     }
 }

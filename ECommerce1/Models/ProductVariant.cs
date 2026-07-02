@@ -31,6 +31,9 @@ namespace ECommerce.Models
         // JSON string storing dynamic attributes like {"Color": "Black", "RAM": "8GB"}
         public string Attributes { get; set; }
         
+        // JSON string storing specifications overrides like {"ROM": "512GB", "RAM": "12GB"}
+        public string? SpecsOverride { get; set; }
+        
         public virtual ICollection<CartItem> CartItems { get; set; }
         public virtual ICollection<OrderItem> OrderItems { get; set; }
         public virtual ICollection<InventoryTransaction> InventoryTransactions { get; set; }
