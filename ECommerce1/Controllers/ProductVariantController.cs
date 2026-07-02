@@ -50,6 +50,7 @@ namespace ECommerce1.Controllers
                     ProductId = pv.ProductId,
                     ImageId = pv.ImageId,
                     Attributes = pv.Attributes,
+                    SpecsOverride = pv.SpecsOverride,
                     IsActive = pv.IsActive
                 })
                 .ToListAsync();
@@ -79,6 +80,7 @@ namespace ECommerce1.Controllers
                 ProductId = pv.ProductId,
                 ImageId = pv.ImageId,
                 Attributes = pv.Attributes,
+                SpecsOverride = pv.SpecsOverride,
                 IsActive = pv.IsActive
             });
         }
@@ -117,6 +119,7 @@ namespace ECommerce1.Controllers
                 ProductId = request.ProductId,
                 ImageId = request.ImageId ?? "",
                 Attributes = request.Attributes ?? "{}",
+                SpecsOverride = request.SpecsOverride,
                 IsActive = request.IsActive
             };
 
@@ -202,6 +205,7 @@ namespace ECommerce1.Controllers
                     ProductId = request.ProductId,
                     ImageId = request.ImageId ?? "",
                     Attributes = request.Attributes ?? "{}",
+                    SpecsOverride = request.SpecsOverride,
                     IsActive = request.IsActive
                 });
             }
@@ -253,6 +257,7 @@ namespace ECommerce1.Controllers
             variant.ProductId = request.ProductId;
             variant.ImageId = request.ImageId ?? "";
             variant.Attributes = request.Attributes ?? "{}";
+            variant.SpecsOverride = request.SpecsOverride;
             variant.IsActive = request.IsActive;
             variant.UpdatedAt = DateTime.UtcNow;
 
@@ -369,6 +374,7 @@ namespace ECommerce1.Controllers
                         ProductId = productId,
                         ImageId = req.ImageId ?? "",
                         Attributes = req.Attributes ?? "{}",
+                        SpecsOverride = req.SpecsOverride,
                         IsActive = req.IsActive
                     };
                     _context.ProductVariants.Add(newVariant);
@@ -388,6 +394,7 @@ namespace ECommerce1.Controllers
                         existing.TotalStock = req.TotalStock;
                         existing.ImageId = req.ImageId ?? "";
                         existing.Attributes = req.Attributes ?? "{}";
+                        existing.SpecsOverride = req.SpecsOverride;
                         existing.IsActive = req.IsActive;
                         existing.UpdatedAt = DateTime.UtcNow;
                     }
