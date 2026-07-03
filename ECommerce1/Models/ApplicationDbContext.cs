@@ -44,6 +44,7 @@ namespace ECommerce.Models
         public DbSet<Ward> Wards { get; set; }
         public DbSet<Payment> Payments { get; set; }
         public DbSet<AuditLog> AuditLogs { get; set; }
+        public DbSet<CategoryBrandDefault> CategoryBrandDefaults { get; set; }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
@@ -56,6 +57,22 @@ namespace ECommerce.Models
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            // CategoryBrandDefault unique index and cascade delete relationships
+            modelBuilder.Entity<CategoryBrandDefault>(entity =>
+            {
+                entity.HasIndex(cbd => new { cbd.CategoryId, cbd.BrandId }).IsUnique();
+
+                entity.HasOne(cbd => cbd.Category)
+                    .WithMany()
+                    .HasForeignKey(cbd => cbd.CategoryId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(cbd => cbd.Brand)
+                    .WithMany()
+                    .HasForeignKey(cbd => cbd.BrandId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
 
             modelBuilder.Entity<Category>()
                 .HasOne(c => c.ParentCategory)

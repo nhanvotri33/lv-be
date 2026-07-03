@@ -1,0 +1,143 @@
+using ECommerce.Models;
+using ECommerce1.DTOs.CategoryBrandDefault;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using System;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace ECommerce1.Controllers
+{
+    [ApiController]
+    [Route("api/[controller]")]
+    public class CategoryBrandDefaultController : ControllerBase
+    {
+        private readonly ApplicationDbContext _context;
+
+        public CategoryBrandDefaultController(ApplicationDbContext context)
+        {
+            _context = context;
+        }
+
+        // GET: api/CategoryBrandDefault/category/5
+        [HttpGet("category/{categoryId}")]
+        public async Task<IActionResult> GetByCategory(int categoryId)
+        {
+            var defaults = await _context.CategoryBrandDefaults
+                .Include(cbd => cbd.Category)
+                .Include(cbd => cbd.Brand)
+                .Where(cbd => cbd.CategoryId == categoryId)
+                .Select(cbd => new CategoryBrandDefaultResponse
+                {
+                    Id = cbd.Id,
+                    CategoryId = cbd.CategoryId,
+                    CategoryName = cbd.Category != null ? cbd.Category.Name : string.Empty,
+                    BrandId = cbd.BrandId,
+                    BrandName = cbd.Brand != null ? cbd.Brand.Name : string.Empty,
+                    DefaultSpecs = cbd.DefaultSpecs,
+                    CreatedAt = cbd.CreatedAt,
+                    UpdatedAt = cbd.UpdatedAt
+                })
+                .ToListAsync();
+
+            return Ok(defaults);
+        }
+
+        // GET: api/CategoryBrandDefault/category/5/brand/3
+        [HttpGet("category/{categoryId}/brand/{brandId}")]
+        public async Task<IActionResult> GetByCategoryAndBrand(int categoryId, int brandId)
+        {
+            var match = await _context.CategoryBrandDefaults
+                .Include(cbd => cbd.Category)
+                .Include(cbd => cbd.Brand)
+                .FirstOrDefaultAsync(cbd => cbd.CategoryId == categoryId && cbd.BrandId == brandId);
+
+            if (match == null)
+            {
+                return NotFound("Không tìm thấy cấu hình thông số mặc định cho cặp Danh mục và Thương hiệu này.");
+            }
+
+            return Ok(new CategoryBrandDefaultResponse
+            {
+                Id = match.Id,
+                CategoryId = match.CategoryId,
+                CategoryName = match.Category != null ? match.Category.Name : string.Empty,
+                BrandId = match.BrandId,
+                BrandName = match.Brand != null ? match.Brand.Name : string.Empty,
+                DefaultSpecs = match.DefaultSpecs,
+                CreatedAt = match.CreatedAt,
+                UpdatedAt = match.UpdatedAt
+            });
+        }
+
+        // POST: api/CategoryBrandDefault
+        [HttpPost]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> Upsert([FromBody] CategoryBrandDefaultRequest request)
+        {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            var categoryExists = await _context.Categories.AnyAsync(c => c.Id == request.CategoryId);
+            if (!categoryExists)
+            {
+                return BadRequest("Danh mục không tồn tại.");
+            }
+
+            var brandExists = await _context.Brands.AnyAsync(b => b.Id == request.BrandId);
+            if (!brandExists)
+            {
+                return BadRequest("Thương hiệu không tồn tại.");
+            }
+
+            var existing = await _context.CategoryBrandDefaults
+                .FirstOrDefaultAsync(cbd => cbd.CategoryId == request.CategoryId && cbd.BrandId == request.BrandId);
+
+            if (existing != null)
+            {
+                existing.DefaultSpecs = request.DefaultSpecs;
+                existing.UpdatedAt = DateTime.UtcNow;
+                
+                await _context.SaveChangesAsync();
+                
+                return Ok(new { message = "Cập nhật cấu hình mặc định thành công.", id = existing.Id });
+            }
+            else
+            {
+                var newDefault = new CategoryBrandDefault
+                {
+                    CategoryId = request.CategoryId,
+                    BrandId = request.BrandId,
+                    DefaultSpecs = request.DefaultSpecs,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+
+                _context.CategoryBrandDefaults.Add(newDefault);
+                await _context.SaveChangesAsync();
+
+                return Ok(new { message = "Thêm cấu hình mặc định thành công.", id = newDefault.Id });
+            }
+        }
+
+        // DELETE: api/CategoryBrandDefault/5
+        [HttpDelete("{id}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> Delete(int id)
+        {
+            var match = await _context.CategoryBrandDefaults.FindAsync(id);
+            if (match == null)
+            {
+                return NotFound("Không tìm thấy cấu hình cần xóa.");
+            }
+
+            _context.CategoryBrandDefaults.Remove(match);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Xóa cấu hình mặc định thành công." });
+        }
+    }
+}
