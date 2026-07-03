@@ -51,6 +51,9 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 
 builder.Services.AddScoped<TokenService>();
 builder.Services.AddScoped<IFileService, FileService>();
+builder.Services.AddScoped<IProductService, ProductService>();
+builder.Services.AddScoped<IProductVariantService, ProductVariantService>();
+builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<ECommerce1.Services.Payment.IPaymentProvider, ECommerce1.Services.Payment.StripePaymentProvider>();
 builder.Services.AddHttpContextAccessor();
@@ -114,6 +117,8 @@ builder.Services.AddAuthentication(options =>
 });
 
 var app = builder.Build();
+
+app.UseMiddleware<ECommerce1.Middlewares.ExceptionHandlingMiddleware>();
 
 // 3. Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
