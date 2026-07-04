@@ -202,7 +202,43 @@ namespace ECommerce1.Services
                 Directory.CreateDirectory(uploadFolder);
             }
 
-            string fileExtension = Path.GetExtension(file.FileName);
+            // ── Deduplication: compute MD5 hash of the incoming file ──────────
+            byte[] incomingBytes;
+            using (var ms = new MemoryStream())
+            {
+                await file.CopyToAsync(ms);
+                incomingBytes = ms.ToArray();
+            }
+
+            string incomingHash;
+            using (var md5 = System.Security.Cryptography.MD5.Create())
+            {
+                incomingHash = BitConverter.ToString(md5.ComputeHash(incomingBytes)).Replace("-", "").ToLowerInvariant();
+            }
+
+            // Search existing files in the same sub-folder for a byte-identical match
+            string fileExtension = Path.GetExtension(file.FileName).ToLower();
+            foreach (var existingFile in Directory.EnumerateFiles(uploadFolder))
+            {
+                // Only compare files with the same extension to short-circuit quickly
+                if (!existingFile.EndsWith(fileExtension, StringComparison.OrdinalIgnoreCase)) continue;
+
+                byte[] existingBytes = await File.ReadAllBytesAsync(existingFile);
+                string existingHash;
+                using (var md5 = System.Security.Cryptography.MD5.Create())
+                {
+                    existingHash = BitConverter.ToString(md5.ComputeHash(existingBytes)).Replace("-", "").ToLowerInvariant();
+                }
+
+                if (incomingHash == existingHash)
+                {
+                    // Identical file already stored — return the existing URL
+                    string existingName = Path.GetFileName(existingFile);
+                    return $"/uploads/{subFolder}/{existingName}";
+                }
+            }
+            // ─────────────────────────────────────────────────────────────────
+
             string rawFileName = Path.GetFileNameWithoutExtension(file.FileName);
             string cleanName = Slugify(rawFileName);
             if (string.IsNullOrEmpty(cleanName))
@@ -213,10 +249,7 @@ namespace ECommerce1.Services
             string uniqueFileName = $"{cleanName}-{Guid.NewGuid().ToString().Substring(0, 8)}{fileExtension}";
             string filePath = Path.Combine(uploadFolder, uniqueFileName);
 
-            using (var fileStream = new FileStream(filePath, FileMode.Create))
-            {
-                await file.CopyToAsync(fileStream);
-            }
+            await File.WriteAllBytesAsync(filePath, incomingBytes);
 
             return $"/uploads/{subFolder}/{uniqueFileName}";
         }

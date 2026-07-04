@@ -220,6 +220,12 @@ namespace ECommerce1.Controllers
                 return BadRequest("Mã này đã tồn tại.");
             }
 
+            // Guard: auto-generate slug if FE did not send one
+            if (string.IsNullOrWhiteSpace(request.Slug))
+            {
+                request.Slug = ECommerce1.Helpers.CodeGeneratorHelper.GenerateSlug(request.Name);
+            }
+
             var newCategory = new Category
             {
                 Name = request.Name,
@@ -327,7 +333,16 @@ namespace ECommerce1.Controllers
             }
 
             category.Name = request.Name;
-            category.Slug = request.Slug;
+            // Guard: never overwrite an existing slug with an empty value;
+            // regenerate from name when the incoming slug is blank.
+            if (!string.IsNullOrWhiteSpace(request.Slug))
+            {
+                category.Slug = request.Slug;
+            }
+            else if (string.IsNullOrWhiteSpace(category.Slug))
+            {
+                category.Slug = ECommerce1.Helpers.CodeGeneratorHelper.GenerateSlug(request.Name);
+            }
             category.CategoryCode = request.CategoryCode;
             category.Description = request.Description;
             category.IconUrl = request.IconUrl;
