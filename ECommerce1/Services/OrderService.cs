@@ -506,7 +506,7 @@ namespace ECommerce1.Services
                     user.RewardPoints += order.PointsRedeemed;
                 }
             }
-            // 4. Chuyển từ Completed (Đã giao) -> Refunded (Đổi trả / Hoàn tiền)
+            // 4. Chuyển từ Completed (Đã giao) thành Refunded (Đổi trả và Hoàn tiền)
             else if (oldStatusId == 4 && newStatusId == 7)
             {
                 // Thu hồi điểm tích lũy và hoàn trả điểm đã tiêu dùng (Không hoàn lại kho tồn máy mới)
