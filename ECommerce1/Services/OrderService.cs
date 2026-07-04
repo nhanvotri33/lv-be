@@ -426,16 +426,13 @@ namespace ECommerce1.Services
             }
 
             // Xử lý logic tồn kho (ReservedStock và TotalStock)
-            bool oldIsReserving = (oldStatusId == 1 || oldStatusId == 2 || oldStatusId == 3);
-
-            // 1. Chuyển từ Đang giữ hàng -> Completed (Đã giao hàng thành công)
-            if (oldIsReserving && newStatusId == 4)
+            // 1. Chuyển từ Chờ duyệt (1) sang Đã duyệt/Đang giao/Hoàn thành (2, 3, 4) -> Trừ kho luôn
+            if (oldStatusId == 1 && (newStatusId == 2 || newStatusId == 3 || newStatusId == 4))
             {
                 foreach (var item in order.OrderItems)
                 {
                     if (item.ProductVariant != null)
                     {
-                        // Giảm trừ thực tế từ kho tổng và giải phóng kho giữ chỗ
                         item.ProductVariant.TotalStock -= item.Quantity;
                         item.ProductVariant.ReservedStock -= item.Quantity;
 
@@ -443,8 +440,55 @@ namespace ECommerce1.Services
                         if (item.ProductVariant.ReservedStock < 0) item.ProductVariant.ReservedStock = 0;
                     }
                 }
+            }
+            // 2. Chuyển từ các trạng thái đã xác nhận/đang giao (2, 3) sang Hủy (5) hoặc Thất bại (6) -> Hoàn trả kho tổng (vì đã trừ ở bước 1)
+            else if ((oldStatusId == 2 || oldStatusId == 3) && (newStatusId == 5 || newStatusId == 6))
+            {
+                foreach (var item in order.OrderItems)
+                {
+                    if (item.ProductVariant != null)
+                    {
+                        item.ProductVariant.TotalStock += item.Quantity;
+                    }
+                }
+            }
+            // 3. Chuyển từ Chờ duyệt (1) sang Hủy (5) hoặc Thất bại (6) -> Chỉ giải phóng kho giữ chỗ (vì chưa trừ kho tổng)
+            else if (oldStatusId == 1 && (newStatusId == 5 || newStatusId == 6))
+            {
+                foreach (var item in order.OrderItems)
+                {
+                    if (item.ProductVariant != null)
+                    {
+                        item.ProductVariant.ReservedStock -= item.Quantity;
+                        if (item.ProductVariant.ReservedStock < 0) item.ProductVariant.ReservedStock = 0;
+                    }
+                }
+            }
 
-                // Cộng điểm tích lũy vào tài khoản User
+            // Đồng bộ Product.TotalStock và Product.ReservedStock từ tổng các Variant
+            var affectedProductIds = order.OrderItems
+                .Where(i => i.ProductVariant != null)
+                .Select(i => i.ProductVariant!.ProductId)
+                .Distinct()
+                .ToList();
+
+            foreach (var productId in affectedProductIds)
+            {
+                var product = await _context.Products.FindAsync(productId);
+                if (product != null)
+                {
+                    var variants = await _context.ProductVariants
+                        .Where(pv => pv.ProductId == productId)
+                        .ToListAsync();
+
+                    product.TotalStock = variants.Sum(pv => pv.TotalStock);
+                    product.ReservedStock = variants.Sum(pv => pv.ReservedStock);
+                }
+            }
+
+            // Xử lý cộng điểm tích lũy khi hoàn thành đơn
+            if (newStatusId == 4 && oldStatusId != 4)
+            {
                 var user = await _context.Users.FindAsync(order.UserId);
                 if (user != null)
                 {
@@ -452,39 +496,20 @@ namespace ECommerce1.Services
                     user.AccumulatedPoints += order.PointsEarned;
                 }
             }
-            // 2. Chuyển từ Đang giữ hàng -> Cancelled (Hủy) hoặc Return_failed (Giao hàng thất bại / Hoàn hàng)
-            else if (oldIsReserving && (newStatusId == 5 || newStatusId == 6))
-            {
-                foreach (var item in order.OrderItems)
-                {
-                    if (item.ProductVariant != null)
-                    {
-                        // Giải phóng kho giữ chỗ, trả lại số lượng AvailableStock cho khách khác mua
-                        item.ProductVariant.ReservedStock -= item.Quantity;
-                        if (item.ProductVariant.ReservedStock < 0) item.ProductVariant.ReservedStock = 0;
-                    }
-                }
 
-                // Hoàn lại điểm đã tiêu dùng cho khách
+            // Xử lý hoàn điểm khi hủy đơn
+            if ((newStatusId == 5 || newStatusId == 6) && (oldStatusId == 1 || oldStatusId == 2 || oldStatusId == 3))
+            {
                 var user = await _context.Users.FindAsync(order.UserId);
                 if (user != null && order.PointsRedeemed > 0)
                 {
                     user.RewardPoints += order.PointsRedeemed;
                 }
             }
-            // 3. Chuyển từ Completed (Đã giao) -> Refunded (Đổi trả / Hoàn tiền)
+            // 4. Chuyển từ Completed (Đã giao) -> Refunded (Đổi trả / Hoàn tiền)
             else if (oldStatusId == 4 && newStatusId == 7)
             {
-                foreach (var item in order.OrderItems)
-                {
-                    if (item.ProductVariant != null)
-                    {
-                        // Cộng lại hàng vào kho tổng vì khách đã hoàn trả sản phẩm
-                        item.ProductVariant.TotalStock += item.Quantity;
-                    }
-                }
-
-                // Thu hồi điểm tích lũy và hoàn trả điểm đã tiêu dùng
+                // Thu hồi điểm tích lũy và hoàn trả điểm đã tiêu dùng (Không hoàn lại kho tồn máy mới)
                 var user = await _context.Users.FindAsync(order.UserId);
                 if (user != null)
                 {
