@@ -16,7 +16,7 @@ namespace ECommerce.Models
         // Admin interaction
         public string? AdminReply { get; set; }
         public DateTime? RepliedAt { get; set; }
-        public bool IsHidden { get; set; } = false;
+        public bool IsHidden { get; set; } = true;
 
         public int ProductId { get; set; }
         [ForeignKey("ProductId")]
