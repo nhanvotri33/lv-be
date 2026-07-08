@@ -109,6 +109,7 @@ namespace ECommerce1.Services
 
             _context.ProductVariants.Add(newVariant);
             await _context.SaveChangesAsync();
+            await SyncParentProductStockAsync(request.ProductId);
         }
 
         public async Task CreateBatchAsync(List<ProductVariantRequest> requests)
@@ -186,6 +187,7 @@ namespace ECommerce1.Services
 
             _context.ProductVariants.AddRange(newVariants);
             await _context.SaveChangesAsync();
+            await SyncParentProductStockAsync(productId);
         }
 
         public async Task UpdateAsync(int id, ProductVariantRequest request)
@@ -214,6 +216,9 @@ namespace ECommerce1.Services
                 _fileService.DeleteImage(variant.ImageId);
             }
 
+            int oldProductId = variant.ProductId;
+            int newProductId = request.ProductId;
+
             variant.Name = request.Name;
             variant.Sku = finalSku;
             variant.Price = request.Price;
@@ -226,6 +231,11 @@ namespace ECommerce1.Services
             variant.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
+            await SyncParentProductStockAsync(oldProductId);
+            if (newProductId != oldProductId)
+            {
+                await SyncParentProductStockAsync(newProductId);
+            }
         }
 
         public async Task SyncAsync(int productId, List<ProductVariantRequest> requests)
@@ -348,6 +358,7 @@ namespace ECommerce1.Services
             }
 
             await _context.SaveChangesAsync();
+            await SyncParentProductStockAsync(productId);
         }
 
         public async Task DeleteAsync(int id)
@@ -367,8 +378,10 @@ namespace ECommerce1.Services
                 _fileService.DeleteImage(variant.ImageId);
             }
 
+            int productId = variant.ProductId;
             _context.ProductVariants.Remove(variant);
             await _context.SaveChangesAsync();
+            await SyncParentProductStockAsync(productId);
         }
 
         private async Task<string> GenerateSkuAsync(int productId, string attributesJson)
@@ -519,6 +532,20 @@ namespace ECommerce1.Services
             }
 
             return string.Empty;
+        }
+        private async Task SyncParentProductStockAsync(int productId)
+        {
+            var product = await _context.Products.FindAsync(productId);
+            if (product != null)
+            {
+                var variants = await _context.ProductVariants
+                    .Where(pv => pv.ProductId == productId)
+                    .ToListAsync();
+                
+                product.TotalStock = variants.Sum(pv => pv.TotalStock);
+                product.ReservedStock = variants.Sum(pv => pv.ReservedStock);
+                await _context.SaveChangesAsync();
+            }
         }
     }
 }
