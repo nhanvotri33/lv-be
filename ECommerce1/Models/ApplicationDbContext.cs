@@ -261,10 +261,10 @@ namespace ECommerce.Models
             return auditEntries;
         }
 
-        private Task OnAfterSaveChanges(System.Threading.CancellationToken cancellationToken, List<AuditEntry> auditEntries)
+        private async Task OnAfterSaveChanges(System.Threading.CancellationToken cancellationToken, List<AuditEntry> auditEntries)
         {
             if (auditEntries == null || auditEntries.Count == 0)
-                return Task.CompletedTask;
+                return;
 
             var httpContext = _httpContextAccessor?.HttpContext;
             var userId = httpContext?.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
@@ -287,7 +287,18 @@ namespace ECommerce.Models
                 AuditLogs.Add(auditLog);
             }
 
-            return base.SaveChangesAsync(cancellationToken);
+            try
+            {
+                await base.SaveChangesAsync(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Warning: Failed to save audit log: " + ex.Message);
+                foreach (var entry in ChangeTracker.Entries<AuditLog>().ToList())
+                {
+                    entry.State = EntityState.Detached;
+                }
+            }
         }
 
         private void OnAfterSaveChanges(List<AuditEntry> auditEntries)
@@ -316,7 +327,18 @@ namespace ECommerce.Models
                 AuditLogs.Add(auditLog);
             }
 
-            base.SaveChanges();
+            try
+            {
+                base.SaveChanges();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Warning: Failed to save audit log: " + ex.Message);
+                foreach (var entry in ChangeTracker.Entries<AuditLog>().ToList())
+                {
+                    entry.State = EntityState.Detached;
+                }
+            }
         }
     }
 
