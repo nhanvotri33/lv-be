@@ -27,6 +27,32 @@ namespace ECommerce1.Helpers
             return code.Length > maxLength ? code.Substring(0, maxLength) : code;
         }
 
+        /// <summary>
+        /// Generates a URL-safe slug from a Vietnamese or ASCII name.
+        /// Example: "Điện thoại Samsung" → "dien-thoai-samsung"
+        /// </summary>
+        public static string GenerateSlug(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return "slug";
+
+            name = name.Replace('đ', 'd').Replace('Đ', 'D');
+            string normalized = name.Normalize(NormalizationForm.FormD);
+            var sb = new StringBuilder();
+            foreach (char c in normalized)
+            {
+                var cat = System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c);
+                if (cat != System.Globalization.UnicodeCategory.NonSpacingMark)
+                    sb.Append(c);
+            }
+            string ascii = sb.ToString().Normalize(NormalizationForm.FormC).ToLowerInvariant();
+
+            ascii = System.Text.RegularExpressions.Regex.Replace(ascii, @"[^a-z0-9\s-]", "");
+            ascii = System.Text.RegularExpressions.Regex.Replace(ascii, @"\s+", "-");
+            ascii = System.Text.RegularExpressions.Regex.Replace(ascii, @"-+", "-").Trim('-');
+
+            return string.IsNullOrEmpty(ascii) ? "slug" : ascii;
+        }
+
         public static string GenerateProductCode(string name, int maxLength = 20)
         {
             if (string.IsNullOrWhiteSpace(name)) return "PROD";

@@ -85,7 +85,8 @@ namespace ECommerce1.Controllers
                 RefreshToken = refreshToken,
                 Id = user.Id,
                 Role = user.Role,
-                RewardPoints = user.RewardPoints
+                RewardPoints = user.RewardPoints,
+                AccumulatedPoints = user.AccumulatedPoints
             };
 
             return Ok(response);
@@ -97,9 +98,14 @@ namespace ECommerce1.Controllers
         {
             try
             {
+                var googleClientId = _configuration["Google:ClientId"];
+                if (string.IsNullOrEmpty(googleClientId))
+                {
+                    return BadRequest("Google Client ID is not configured.");
+                }
                 var settings = new Google.Apis.Auth.GoogleJsonWebSignature.ValidationSettings()
                 {
-                    Audience = new List<string>() { "702529174883-k7q714ds1n185oaabhl85hfhhqhqg7dq.apps.googleusercontent.com" }
+                    Audience = new List<string>() { googleClientId }
                 };
                 
                 var payload = await Google.Apis.Auth.GoogleJsonWebSignature.ValidateAsync(request.IdToken, settings);
@@ -139,7 +145,8 @@ namespace ECommerce1.Controllers
                     RefreshToken = refreshToken,
                     Id = user.Id,
                     Role = user.Role,
-                    RewardPoints = user.RewardPoints
+                    RewardPoints = user.RewardPoints,
+                    AccumulatedPoints = user.AccumulatedPoints
                 });
             }
             catch (Exception ex)

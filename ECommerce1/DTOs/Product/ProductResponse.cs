@@ -9,6 +9,7 @@ namespace ECommerce1.DTOs.Product
         public string Slug { get; set; }
         public string ProductCode { get; set; }
         public string Description { get; set; }
+        public string? Specs { get; set; }
         public decimal BasePrice { get; set; }
         public decimal? OriginalPrice { get; set; }
         public int TotalStock { get; set; }
@@ -24,7 +25,10 @@ namespace ECommerce1.DTOs.Product
         public string ThumbnailImage { get; set; }
         public string MainImage { get; set; }
         public string Images { get; set; }
+        public string? VideoUrl { get; set; }
         public bool IsAvailable { get; set; }
         public bool? BrandIsActive { get; set; }
+        public double AverageRating { get; set; }
+        public int ReviewCount { get; set; }
     }
 }

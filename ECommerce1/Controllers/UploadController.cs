@@ -21,11 +21,11 @@ namespace ECommerce1.Controllers
 
         // ================= UPLOAD LOCAL =================
         [HttpPost("local")]
-        public async Task<IActionResult> UploadLocal(IFormFile file)
+        public async Task<IActionResult> UploadLocal(IFormFile file, [FromQuery] string folder = "general")
         {
             try
             {
-                var url = await _fileService.UploadImageAsync(file);
+                var url = await _fileService.UploadImageAsync(file, folder);
                 return Ok(new { Url = url, Message = "Upload local thành công!" });
             }
             catch (Exception ex)
