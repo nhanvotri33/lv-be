@@ -49,6 +49,7 @@ namespace ECommerce1.Controllers
                     ReceiverName = o.ReceiverName,
                     ReceiverPhone = o.ReceiverPhone,
                     ShippingAddress = $"{o.ShippingAddressLine}, {o.ShippingWard}, {o.ShippingProvince}",
+                    PaymentMethod = o.PaymentMethod,
                     PromotionCode = o.Promotion != null ? o.Promotion.Code : null,
                     PointsEarned = o.PointsEarned,
                     PointsRedeemed = o.PointsRedeemed,
@@ -92,6 +93,7 @@ namespace ECommerce1.Controllers
                     ReceiverName = o.ReceiverName,
                     ReceiverPhone = o.ReceiverPhone,
                     ShippingAddress = $"{o.ShippingAddressLine}, {o.ShippingWard}, {o.ShippingProvince}",
+                    PaymentMethod = o.PaymentMethod,
                     PromotionCode = o.Promotion != null ? o.Promotion.Code : null,
                     PointsEarned = o.PointsEarned,
                     PointsRedeemed = o.PointsRedeemed,
@@ -307,7 +309,8 @@ namespace ECommerce1.Controllers
                     PointsEarned = pointsEarned,
                     PointsRedeemed = pointsRedeemed,
                     DiscountFromPoints = discountFromPoints,
-                    Note = request.Note
+                    Note = request.Note,
+                    PaymentMethod = request.PaymentMethod ?? "COD"
                 };
                 _context.Orders.Add(newOrder);
                 await _context.SaveChangesAsync(); // Lưu để lấy Order.Id
@@ -572,6 +575,7 @@ namespace ECommerce1.Controllers
                 PointsEarned = order.PointsEarned,
                 PointsRedeemed = order.PointsRedeemed,
                 DiscountFromPoints = order.DiscountFromPoints,
+                Note = order.Note,
                 Items = order.OrderItems.Select(oi => new OrderItemResponse
                 {
                     Id = oi.Id,

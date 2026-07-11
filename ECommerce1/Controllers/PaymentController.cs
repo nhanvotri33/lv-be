@@ -18,11 +18,16 @@ namespace ECommerce1.Controllers
     {
         private readonly ApplicationDbContext _context;
         private readonly IEnumerable<ECommerce1.Services.Payment.IPaymentProvider> _paymentProviders;
+        private readonly IConfiguration _configuration;
 
-        public PaymentController(ApplicationDbContext context, IEnumerable<ECommerce1.Services.Payment.IPaymentProvider> paymentProviders)
+        public PaymentController(
+            ApplicationDbContext context, 
+            IEnumerable<ECommerce1.Services.Payment.IPaymentProvider> paymentProviders,
+            IConfiguration configuration)
         {
             _context = context;
             _paymentProviders = paymentProviders;
+            _configuration = configuration;
         }
 
         [HttpPost("create-checkout-session/{orderId}")]
@@ -75,14 +80,20 @@ namespace ECommerce1.Controllers
                 _context.Payments.Add(payment);
                 await _context.SaveChangesAsync();
 
-                // Ở bước này, với Stripe, sessionId có thể được frontend dùng với StripeJS,
-                // Nhưng Frontend của ta đang redirect tới `url`.
-                // Vì vậy, ta cần trả về URL tương ứng. Với Stripe service, Session url có dạng https://checkout.stripe.com/c/pay/cs_test_...
-                // Thực tế Stripe Session service get trả về Url.
-                var service = new Stripe.Checkout.SessionService();
-                var sessionInfo = await service.GetAsync(sessionId);
+                // Trả về URL thanh toán tương ứng cho từng cổng thanh toán
+                if (provider.Equals("stripe", StringComparison.OrdinalIgnoreCase))
+                {
+                    var service = new Stripe.Checkout.SessionService();
+                    var sessionInfo = await service.GetAsync(sessionId);
+                    return Ok(new { url = sessionInfo.Url });
+                }
+                else if (provider.Equals("momo", StringComparison.OrdinalIgnoreCase))
+                {
+                    var mockRedirectUrl = successUrl.Replace("{CHECKOUT_SESSION_ID}", sessionId);
+                    return Ok(new { url = mockRedirectUrl });
+                }
 
-                return Ok(new { url = sessionInfo.Url });
+                return BadRequest("Phương thức thanh toán không hợp lệ.");
             }
             catch (Exception ex)
             {
@@ -134,11 +145,12 @@ namespace ECommerce1.Controllers
         {
             try
             {
-                // Giả lập khóa bảo mật của MoMo (Secret Key)
-                var secretKey = "your_momo_secret_key";
+                // Lấy khóa cấu hình của MoMo từ appsettings.json
+                var secretKey = _configuration["Momo:SecretKey"] ?? "your_momo_secret_key";
+                var accessKey = _configuration["Momo:AccessKey"] ?? "mock_access_key";
                 
                 // Tạo chuỗi raw data để đối chiếu chữ ký (theo quy chuẩn tài liệu tích hợp MoMo)
-                var rawData = $"accessKey=mock_access_key&amount={request.Amount}&extraData={request.ExtraData}&message={request.Message}&orderId={request.OrderId}&orderInfo={request.OrderInfo}&orderType={request.OrderType}&partnerCode={request.PartnerCode}&requestId={request.RequestId}&responseTime={request.ResponseTime}&resultCode={request.ResultCode}&transId={request.TransId}";
+                var rawData = $"accessKey={accessKey}&amount={request.Amount}&extraData={request.ExtraData}&message={request.Message}&orderId={request.OrderId}&orderInfo={request.OrderInfo}&orderType={request.OrderType}&partnerCode={request.PartnerCode}&requestId={request.RequestId}&responseTime={request.ResponseTime}&resultCode={request.ResultCode}&transId={request.TransId}";
                 
                 // Tính toán HMAC SHA256 để đối chiếu bảo mật
                 var computedSignature = ComputeHmacSha256(rawData, secretKey);
