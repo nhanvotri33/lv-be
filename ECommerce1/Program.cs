@@ -51,6 +51,9 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 
 builder.Services.AddScoped<TokenService>();
 builder.Services.AddScoped<IFileService, FileService>();
+builder.Services.AddScoped<IProductService, ProductService>();
+builder.Services.AddScoped<IProductVariantService, ProductVariantService>();
+builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<ECommerce1.Services.Payment.IPaymentProvider, ECommerce1.Services.Payment.StripePaymentProvider>();
 // builder.Services.AddScoped<ECommerce1.Services.Payment.IPaymentProvider, ECommerce1.Services.Payment.MomoPaymentProvider>();
@@ -116,76 +119,7 @@ builder.Services.AddAuthentication(options =>
 
 var app = builder.Build();
 
-// Tự động migrate database khi khởi chạy và seed tài khoản Admin mặc định
-using (var scope = app.Services.CreateScope())
-{
-    var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-    dbContext.Database.Migrate();
-
-    // Sửa lỗi schema thiếu cột/bảng do EF Migration không đồng bộ
-    dbContext.Database.OpenConnection();
-    try
-    {
-        // 1. Kiểm tra và thêm cột Note vào bảng Orders
-        dbContext.Database.ExecuteSqlRaw(@"
-            IF NOT EXISTS (
-                SELECT 1 
-                FROM sys.columns 
-                WHERE object_id = OBJECT_ID('Orders') AND name = 'Note'
-            )
-            BEGIN
-                ALTER TABLE Orders ADD Note NVARCHAR(MAX) NULL;
-            END
-        ");
-
-        // 2. Kiểm tra và tạo bảng AuditLogs
-        dbContext.Database.ExecuteSqlRaw(@"
-            IF NOT EXISTS (
-                SELECT 1 
-                FROM sys.tables 
-                WHERE name = 'AuditLogs'
-            )
-            BEGIN
-                CREATE TABLE AuditLogs (
-                    Id INT IDENTITY(1,1) PRIMARY KEY,
-                    UserId NVARCHAR(MAX) NULL,
-                    UserEmail NVARCHAR(MAX) NULL,
-                    Action NVARCHAR(MAX) NOT NULL,
-                    TargetTable NVARCHAR(MAX) NOT NULL,
-                    TargetId NVARCHAR(MAX) NOT NULL,
-                    OldValues NVARCHAR(MAX) NULL,
-                    NewValues NVARCHAR(MAX) NULL,
-                    Timestamp DATETIME2 NOT NULL DEFAULT GETUTCDATE()
-                );
-            END
-        ");
-    }
-    finally
-    {
-        dbContext.Database.CloseConnection();
-    }
-
-    if (!dbContext.Users.Any())
-    {
-        var adminUser = new ECommerce1.Models.User
-        {
-            Id = Guid.NewGuid(),
-            Username = "admin",
-            Email = "admin@phoneshop.com",
-            Role = "Admin",
-            IsActive = true,
-            IsEmailVerified = true,
-            CreatedAt = DateTime.UtcNow
-        };
-        var hasher = new Microsoft.AspNetCore.Identity.PasswordHasher<ECommerce1.Models.User>();
-        adminUser.PasswordHash = hasher.HashPassword(adminUser, "adminadmin");
-
-        dbContext.Users.Add(adminUser);
-        dbContext.SaveChanges();
-    }
-
-    DataSeeder.SeedExampleData(dbContext);
-}
+app.UseMiddleware<ECommerce1.Middlewares.ExceptionHandlingMiddleware>();
 
 // 3. Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())

@@ -103,8 +103,9 @@ namespace ECommerce1.Controllers
                 ProductId = request.ProductId,
                 UserId = userId,
                 Rating = request.Rating,
-                Comment = System.Net.WebUtility.HtmlEncode(request.Comment),
-                CreatedAt = DateTime.UtcNow
+                Comment = request.Comment,
+                CreatedAt = DateTime.UtcNow,
+                IsHidden = true
             };
 
             _context.Reviews.Add(review);
@@ -122,7 +123,7 @@ namespace ECommerce1.Controllers
             if (review == null)
                 return NotFound("Không tìm thấy bài đánh giá.");
 
-            review.AdminReply = System.Net.WebUtility.HtmlEncode(request.Reply);
+            review.AdminReply = request.Reply;
             review.RepliedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();

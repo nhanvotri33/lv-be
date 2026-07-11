@@ -11,5 +11,6 @@ namespace ECommerce1.DTOs.Category
         public string MetaDescription { get; set; } = string.Empty;
         public int? ParentId { get; set; }
         public bool IsActive { get; set; } = true;
+        public string? SpecsTemplate { get; set; }
     }
 }
