@@ -53,6 +53,7 @@ builder.Services.AddScoped<TokenService>();
 builder.Services.AddScoped<IFileService, FileService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<ECommerce1.Services.Payment.IPaymentProvider, ECommerce1.Services.Payment.StripePaymentProvider>();
+// builder.Services.AddScoped<ECommerce1.Services.Payment.IPaymentProvider, ECommerce1.Services.Payment.MomoPaymentProvider>();
 builder.Services.AddHttpContextAccessor();
 
 var jwtKey = builder.Configuration["Jwt:Key"];
@@ -115,6 +116,77 @@ builder.Services.AddAuthentication(options =>
 
 var app = builder.Build();
 
+// Tự động migrate database khi khởi chạy và seed tài khoản Admin mặc định
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    dbContext.Database.Migrate();
+
+    // Sửa lỗi schema thiếu cột/bảng do EF Migration không đồng bộ
+    dbContext.Database.OpenConnection();
+    try
+    {
+        // 1. Kiểm tra và thêm cột Note vào bảng Orders
+        dbContext.Database.ExecuteSqlRaw(@"
+            IF NOT EXISTS (
+                SELECT 1 
+                FROM sys.columns 
+                WHERE object_id = OBJECT_ID('Orders') AND name = 'Note'
+            )
+            BEGIN
+                ALTER TABLE Orders ADD Note NVARCHAR(MAX) NULL;
+            END
+        ");
+
+        // 2. Kiểm tra và tạo bảng AuditLogs
+        dbContext.Database.ExecuteSqlRaw(@"
+            IF NOT EXISTS (
+                SELECT 1 
+                FROM sys.tables 
+                WHERE name = 'AuditLogs'
+            )
+            BEGIN
+                CREATE TABLE AuditLogs (
+                    Id INT IDENTITY(1,1) PRIMARY KEY,
+                    UserId NVARCHAR(MAX) NULL,
+                    UserEmail NVARCHAR(MAX) NULL,
+                    Action NVARCHAR(MAX) NOT NULL,
+                    TargetTable NVARCHAR(MAX) NOT NULL,
+                    TargetId NVARCHAR(MAX) NOT NULL,
+                    OldValues NVARCHAR(MAX) NULL,
+                    NewValues NVARCHAR(MAX) NULL,
+                    Timestamp DATETIME2 NOT NULL DEFAULT GETUTCDATE()
+                );
+            END
+        ");
+    }
+    finally
+    {
+        dbContext.Database.CloseConnection();
+    }
+
+    if (!dbContext.Users.Any())
+    {
+        var adminUser = new ECommerce1.Models.User
+        {
+            Id = Guid.NewGuid(),
+            Username = "admin",
+            Email = "admin@phoneshop.com",
+            Role = "Admin",
+            IsActive = true,
+            IsEmailVerified = true,
+            CreatedAt = DateTime.UtcNow
+        };
+        var hasher = new Microsoft.AspNetCore.Identity.PasswordHasher<ECommerce1.Models.User>();
+        adminUser.PasswordHash = hasher.HashPassword(adminUser, "adminadmin");
+
+        dbContext.Users.Add(adminUser);
+        dbContext.SaveChanges();
+    }
+
+    DataSeeder.SeedExampleData(dbContext);
+}
+
 // 3. Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {
@@ -135,6 +207,71 @@ app.UseAuthorization();
 app.MapControllers();
 
 app.Run();
+
+public static class DataSeeder
+{
+    public static void SeedExampleData(ApplicationDbContext dbContext)
+    {
+        // 1. Seed OrderStatuses if empty
+        if (!dbContext.OrderStatuses.Any())
+        {
+            dbContext.Database.OpenConnection();
+            try
+            {
+                dbContext.Database.ExecuteSqlRaw(@"
+                    SET IDENTITY_INSERT OrderStatuses ON;
+                    INSERT INTO OrderStatuses (Id, Name, Description) VALUES (1, 'Pending', N'Chờ thanh toán / Chờ xác nhận');
+                    INSERT INTO OrderStatuses (Id, Name, Description) VALUES (2, 'Processing', N'Đang xử lý / Đóng gói');
+                    INSERT INTO OrderStatuses (Id, Name, Description) VALUES (3, 'Shipping', N'Đang vận chuyển');
+                    INSERT INTO OrderStatuses (Id, Name, Description) VALUES (4, 'Completed', N'Đã giao hàng thành công');
+                    INSERT INTO OrderStatuses (Id, Name, Description) VALUES (5, 'Cancelled', N'Đã hủy');
+                    INSERT INTO OrderStatuses (Id, Name, Description) VALUES (6, 'Return_failed', N'Giao hàng thất bại / Hoàn hàng');
+                    INSERT INTO OrderStatuses (Id, Name, Description) VALUES (7, 'Refunded', N'Đổi trả / Hoàn tiền');
+                    SET IDENTITY_INSERT OrderStatuses OFF;
+                ");
+            }
+            finally
+            {
+                dbContext.Database.CloseConnection();
+            }
+        }
+
+        // 2. Seed Provinces if empty
+        if (!dbContext.Provinces.Any())
+        {
+            var provinces = new List<Province>
+            {
+                new Province { Id = "79", Name = "Hồ Chí Minh", FullName = "Thành phố Hồ Chí Minh", CodeName = "ho_chi_minh" },
+                new Province { Id = "01", Name = "Hà Nội", FullName = "Thành phố Hà Nội", CodeName = "ha_noi" },
+                new Province { Id = "48", Name = "Đà Nẵng", FullName = "Thành phố Đà Nẵng", CodeName = "da_nang" }
+            };
+            dbContext.Provinces.AddRange(provinces);
+            dbContext.SaveChanges();
+        }
+
+        // 3. Seed Wards if empty
+        if (!dbContext.Wards.Any())
+        {
+            var wards = new List<Ward>
+            {
+                // HCM
+                new Ward { Id = "26734", Name = "Bến Nghé", FullName = "Phường Bến Nghé", CodeName = "ben_nghe", ProvinceId = "79" },
+                new Ward { Id = "26740", Name = "Đa Kao", FullName = "Phường Đa Kao", CodeName = "da_kao", ProvinceId = "79" },
+                new Ward { Id = "26745", Name = "Tân Định", FullName = "Phường Tân Định", CodeName = "tan_dinh", ProvinceId = "79" },
+                // HN
+                new Ward { Id = "00001", Name = "Phúc Xá", FullName = "Phường Phúc Xá", CodeName = "phuc_xa", ProvinceId = "01" },
+                new Ward { Id = "00004", Name = "Trúc Bạch", FullName = "Phường Trúc Bạch", CodeName = "truc_bach", ProvinceId = "01" },
+                new Ward { Id = "00006", Name = "Vĩnh Phúc", FullName = "Phường Vĩnh Phúc", CodeName = "vinh_phuc", ProvinceId = "01" },
+                // DN
+                new Ward { Id = "20197", Name = "Hải Châu I", FullName = "Phường Hải Châu I", CodeName = "hai_chau_i", ProvinceId = "48" },
+                new Ward { Id = "20200", Name = "Hải Châu II", FullName = "Phường Hải Châu II", CodeName = "hai_chau_ii", ProvinceId = "48" },
+                new Ward { Id = "20203", Name = "Thạch Thang", FullName = "Phường Thạch Thang", CodeName = "thach_thang", ProvinceId = "48" }
+            };
+            dbContext.Wards.AddRange(wards);
+            dbContext.SaveChanges();
+        }
+    }
+}
 
 //using ECommerce.Models;
 //using Microsoft.EntityFrameworkCore;
