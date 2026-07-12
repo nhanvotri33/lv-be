@@ -257,19 +257,6 @@ namespace ECommerce1.Services
                     shippingAddressLine = request.AddressLine;
                     shippingWard = ward != null ? ward.Name : "";
                     shippingProvince = ward != null && ward.Province != null ? ward.Province.Name : "";
-
-                    var newShipping = new ShippingInfo
-                    {
-                        UserId = userId,
-                        RecipientName = request.RecipientName,
-                        PhoneNumber = request.PhoneNumber,
-                        AddressLine = request.AddressLine,
-                        WardId = request.WardId,
-                        IsDefault = true,
-                        CreatedAt = DateTime.UtcNow,
-                        UpdatedAt = DateTime.UtcNow
-                    };
-                    _context.ShippingInfos.Add(newShipping);
                 }
 
                 // 6. Tạo đơn hàng (Order)

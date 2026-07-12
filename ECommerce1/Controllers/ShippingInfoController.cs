@@ -163,9 +163,32 @@ namespace ECommerce1.Controllers
             if (info.UserId != userId)
                 return StatusCode(403, "Bạn không có quyền xóa địa chỉ của người khác.");
 
+            bool wasDefault = info.IsDefault;
 
             _context.ShippingInfos.Remove(info);
             await _context.SaveChangesAsync();
+
+            // Nếu địa chỉ bị xóa là địa chỉ mặc định, tự động gán địa chỉ còn lại gần nhất làm mặc định
+            if (wasDefault)
+            {
+                var remainingDefault = await _context.ShippingInfos
+                    .Where(s => s.UserId == userId && s.IsDefault)
+                    .FirstOrDefaultAsync();
+
+                if (remainingDefault == null)
+                {
+                    var newDefault = await _context.ShippingInfos
+                        .Where(s => s.UserId == userId)
+                        .OrderByDescending(s => s.CreatedAt)
+                        .FirstOrDefaultAsync();
+
+                    if (newDefault != null)
+                    {
+                        newDefault.IsDefault = true;
+                        await _context.SaveChangesAsync();
+                    }
+                }
+            }
 
             return Ok("Đã xóa địa chỉ thành công.");
         }
