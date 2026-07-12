@@ -152,13 +152,6 @@ namespace ECommerce1.Controllers
             // Cập nhật tồn kho ở biến thể
             variant.TotalStock += actualQtyChange;
 
-            // Cập nhật tồn kho tổng ở Product
-            if (variant.Product != null)
-            {
-                variant.Product.TotalStock += actualQtyChange;
-                if (variant.Product.TotalStock < 0) variant.Product.TotalStock = 0;
-            }
-
             // Tạo bản ghi giao dịch
             var transaction = new InventoryTransaction
             {
@@ -174,6 +167,13 @@ namespace ECommerce1.Controllers
 
             _context.InventoryTransactions.Add(transaction);
             await _context.SaveChangesAsync();
+
+            // Cập nhật tồn kho tổng ở Product atomically từ tổng các biến thể để tránh race condition
+            await _context.Database.ExecuteSqlRawAsync(
+                "UPDATE Products SET TotalStock = COALESCE((SELECT SUM(TotalStock) FROM ProductVariants WHERE ProductId = {0}), 0), " +
+                "ReservedStock = COALESCE((SELECT SUM(ReservedStock) FROM ProductVariants WHERE ProductId = {0}), 0) WHERE Id = {0}; " +
+                "UPDATE Products SET IsActive = CAST(0 AS BIT) WHERE Id = {0} AND (TotalStock - ReservedStock) <= 0;",
+                variant.ProductId);
 
             return Ok(new { Message = "Thực hiện giao dịch kho thành công.", TransactionId = transaction.Id, NewStock = variant.TotalStock });
         }
@@ -213,18 +213,20 @@ namespace ECommerce1.Controllers
                 return BadRequest($"Không thể hoàn tác. Số lượng tồn kho sau hoàn tác của '{variant.Name}' sẽ bị âm.");
             }
 
-            // Cập nhật tồn kho
+            // Cập nhật tồn kho ở biến thể
             variant.TotalStock += qtyToRevert;
-            if (variant.Product != null)
-            {
-                variant.Product.TotalStock += qtyToRevert;
-                if (variant.Product.TotalStock < 0) variant.Product.TotalStock = 0;
-            }
 
             transaction.IsReverted = true;
             transaction.Note += " (Đã hoàn tác)";
 
             await _context.SaveChangesAsync();
+
+            // Cập nhật tồn kho tổng ở Product atomically từ tổng các biến thể để tránh race condition
+            await _context.Database.ExecuteSqlRawAsync(
+                "UPDATE Products SET TotalStock = COALESCE((SELECT SUM(TotalStock) FROM ProductVariants WHERE ProductId = {0}), 0), " +
+                "ReservedStock = COALESCE((SELECT SUM(ReservedStock) FROM ProductVariants WHERE ProductId = {0}), 0) WHERE Id = {0}; " +
+                "UPDATE Products SET IsActive = CAST(0 AS BIT) WHERE Id = {0} AND (TotalStock - ReservedStock) <= 0;",
+                variant.ProductId);
 
             return Ok(new { Message = "Hoàn tác giao dịch kho thành công.", NewStock = variant.TotalStock });
         }

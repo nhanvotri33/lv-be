@@ -50,7 +50,7 @@ namespace ECommerce1.Controllers
 
             var domain = "http://localhost:5173"; 
             var successUrl = domain + $"/payment-callback?session_id={{CHECKOUT_SESSION_ID}}&provider={provider}";
-            var cancelUrl = domain + $"/payment-callback?cancel=true&provider={provider}";
+            var cancelUrl = domain + $"/payment-callback?cancel=true&session_id={{CHECKOUT_SESSION_ID}}&provider={provider}";
 
             try
             {
@@ -130,7 +130,68 @@ namespace ECommerce1.Controllers
                     return Ok(new { message = result.Message, orderId = order?.Id });
                 }
 
+                payment.Status = "failed";
+                payment.UpdatedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+
                 return BadRequest(new { message = result.Message });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpPost("cancel-session")]
+        public async Task<IActionResult> CancelSession([FromQuery] string session_id, [FromQuery] string provider = "stripe")
+        {
+            try
+            {
+                var payment = await _context.Payments.FirstOrDefaultAsync(p => p.ProviderSessionId == session_id && p.Provider == provider);
+                if (payment == null) return NotFound("Không tìm thấy giao dịch.");
+
+                if (payment.Status == "pending")
+                {
+                    payment.Status = "failed";
+                    payment.UpdatedAt = DateTime.UtcNow;
+                    await _context.SaveChangesAsync();
+                }
+
+                return Ok(new { message = "Giao dịch đã được hủy." });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+        }
+
+        [HttpGet("admin/all-payments")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> GetAllPayments()
+        {
+            try
+            {
+                var payments = await _context.Payments
+                    .Include(p => p.User)
+                    .Include(p => p.Order)
+                    .OrderByDescending(p => p.CreatedAt)
+                    .Select(p => new {
+                        p.Id,
+                        p.OrderId,
+                        CustomerName = p.User != null ? p.User.Username : "N/A",
+                        CustomerEmail = p.User != null ? p.User.Email : "N/A",
+                        p.Provider,
+                        p.ProviderSessionId,
+                        p.ProviderTransactionId,
+                        p.Amount,
+                        p.Currency,
+                        p.Status,
+                        p.CreatedAt,
+                        p.UpdatedAt
+                    })
+                    .ToListAsync();
+
+                return Ok(payments);
             }
             catch (Exception ex)
             {

@@ -226,7 +226,14 @@ namespace ECommerce1.Services
             product.BasePrice = request.BasePrice;
             product.OriginalPrice = request.OriginalPrice;
             product.TotalStock = request.TotalStock;
-            product.IsActive = request.IsActive;
+            if (product.TotalStock - product.ReservedStock <= 0)
+            {
+                product.IsActive = false;
+            }
+            else
+            {
+                product.IsActive = request.IsActive;
+            }
             product.IsFeatured = request.IsFeatured;
             product.CategoryId = request.CategoryId;
             product.BrandId = request.BrandId;
