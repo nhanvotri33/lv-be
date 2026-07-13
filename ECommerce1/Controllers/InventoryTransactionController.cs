@@ -149,8 +149,22 @@ namespace ECommerce1.Controllers
                 return BadRequest($"Tồn kho hiện tại của '{variant.Name}' không đủ ({variant.TotalStock} sản phẩm).");
             }
 
-            // Cập nhật tồn kho ở biến thể
-            variant.TotalStock += actualQtyChange;
+            // Cập nhật tồn kho (Kiểm tra tình trạng máy đối với nhập hàng khách trả)
+            bool shouldUpdateStock = true;
+            if (type == "IMPORT_RETURN" && !string.IsNullOrEmpty(request.Note))
+            {
+                if (request.Note.Contains("[Tình trạng: Đã bóc seal / Máy cũ]") || 
+                    request.Note.Contains("[Tình trạng: Lỗi phần cứng]"))
+                {
+                    shouldUpdateStock = false;
+                }
+            }
+
+            if (shouldUpdateStock)
+            {
+                // Cập nhật tồn kho ở biến thể
+                variant.TotalStock += actualQtyChange;
+            }
 
             // Tạo bản ghi giao dịch
             var transaction = new InventoryTransaction
