@@ -45,6 +45,7 @@ namespace ECommerce.Models
         public DbSet<Payment> Payments { get; set; }
         public DbSet<AuditLog> AuditLogs { get; set; }
         public DbSet<CategoryBrandDefault> CategoryBrandDefaults { get; set; }
+        public DbSet<Banner> Banners { get; set; }
 
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
