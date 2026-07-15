@@ -4,6 +4,7 @@ using ECommerce.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,10 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace ECommerce1.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260714173527_AddProductComboSupport")]
+    partial class AddProductComboSupport
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -345,26 +347,8 @@ namespace ECommerce1.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"), 1L, 1);
 
-                    b.Property<decimal?>("ActualShippingFee")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<string>("AhamoveOrderId")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("AhamoveSharedLink")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("AhamoveStatus")
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
-
-                    b.Property<double?>("DeliveryLatitude")
-                        .HasColumnType("float");
-
-                    b.Property<double?>("DeliveryLongitude")
-                        .HasColumnType("float");
 
                     b.Property<decimal>("DiscountFromPoints")
                         .HasColumnType("decimal(18,2)");
@@ -944,12 +928,6 @@ namespace ECommerce1.Migrations
 
                     b.Property<bool>("IsDefault")
                         .HasColumnType("bit");
-
-                    b.Property<double?>("Latitude")
-                        .HasColumnType("float");
-
-                    b.Property<double?>("Longitude")
-                        .HasColumnType("float");
 
                     b.Property<string>("PhoneNumber")
                         .IsRequired()

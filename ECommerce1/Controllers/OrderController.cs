@@ -78,6 +78,22 @@ namespace ECommerce1.Controllers
             return Ok("Cập nhật trạng thái đơn hàng và xử lý tồn kho thành công.");
         }
 
+        // ================= GỬI GIAO HÀNG QUA AHAMOVE (ADMIN) =================
+        [HttpPost("{id}/ship-ahamove")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> ShipWithAhamove(int id)
+        {
+            try
+            {
+                var response = await _orderService.ShipWithAhamoveAsync(id);
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ex.Message);
+            }
+        }
+
         // ================= TRA CỨU ĐƠN HÀNG (DÀNH CHO KHÁCH VÃNG LAI) =================
         [HttpGet("track")]
         [AllowAnonymous]

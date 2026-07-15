@@ -21,6 +21,15 @@ namespace ECommerce1.DTOs.Order
         public int PointsRedeemed { get; set; }
         public decimal DiscountFromPoints { get; set; }
         public string? Note { get; set; } // Ghi chú giao hàng
+        
+        // --- Ahamove Integration ---
+        public double? DeliveryLatitude { get; set; }
+        public double? DeliveryLongitude { get; set; }
+        public string? AhamoveOrderId { get; set; }
+        public string? AhamoveStatus { get; set; }
+        public string? AhamoveSharedLink { get; set; }
+        public decimal? ActualShippingFee { get; set; }
+
         public List<OrderItemResponse> Items { get; set; } = new List<OrderItemResponse>();
     }
 }

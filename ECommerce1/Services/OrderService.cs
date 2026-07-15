@@ -11,10 +11,16 @@ namespace ECommerce1.Services
     public class OrderService : IOrderService
     {
         private readonly ApplicationDbContext _context;
+        private readonly IEnumerable<ECommerce1.Services.Payment.IPaymentProvider> _paymentProviders;
+        private readonly IAhamoveService _ahamoveService;
 
-        public OrderService(ApplicationDbContext context)
+        public OrderService(ApplicationDbContext context, 
+            IEnumerable<ECommerce1.Services.Payment.IPaymentProvider> paymentProviders,
+            IAhamoveService ahamoveService)
         {
             _context = context;
+            _paymentProviders = paymentProviders;
+            _ahamoveService = ahamoveService;
         }
 
         public async Task<IEnumerable<OrderResponse>> GetMyOrdersAsync(Guid userId)
@@ -44,6 +50,12 @@ namespace ECommerce1.Services
                     PointsRedeemed = o.PointsRedeemed,
                     DiscountFromPoints = o.DiscountFromPoints,
                     Note = o.Note,
+                    DeliveryLatitude = o.DeliveryLatitude,
+                    DeliveryLongitude = o.DeliveryLongitude,
+                    AhamoveOrderId = o.AhamoveOrderId,
+                    AhamoveStatus = o.AhamoveStatus,
+                    AhamoveSharedLink = o.AhamoveSharedLink,
+                    ActualShippingFee = o.ActualShippingFee,
                     Items = o.OrderItems.Select(oi => new OrderItemResponse
                     {
                         Id = oi.Id,
@@ -83,6 +95,12 @@ namespace ECommerce1.Services
                     PointsRedeemed = o.PointsRedeemed,
                     DiscountFromPoints = o.DiscountFromPoints,
                     Note = o.Note,
+                    DeliveryLatitude = o.DeliveryLatitude,
+                    DeliveryLongitude = o.DeliveryLongitude,
+                    AhamoveOrderId = o.AhamoveOrderId,
+                    AhamoveStatus = o.AhamoveStatus,
+                    AhamoveSharedLink = o.AhamoveSharedLink,
+                    ActualShippingFee = o.ActualShippingFee,
                     Items = o.OrderItems.Select(oi => new OrderItemResponse
                     {
                         Id = oi.Id,
@@ -117,8 +135,43 @@ namespace ECommerce1.Services
                         throw new ArgumentException($"Sản phẩm '{item.ProductVariant.Name}' không đủ tồn kho. Vui lòng giảm số lượng.");
                 }
 
-                // 3. Tính tổng tiền
-                decimal subTotal = cart.CartItems.Sum(ci => ci.Quantity * ci.ProductVariant.Price);
+                // 3. Tính tổng tiền & Xử lý giá Combo
+                decimal subTotal = 0;
+                var calculatedPrices = new System.Collections.Generic.Dictionary<int, decimal>();
+
+                var cartItemsList = cart.CartItems.ToList();
+                foreach (var item in cartItemsList)
+                {
+                    decimal price = item.ProductVariant.Price;
+
+                    if (item.AppliedComboId.HasValue)
+                    {
+                        int comboId = item.AppliedComboId.Value;
+                        var comboConfig = await _context.ProductComboItems.Where(c => c.ProductComboId == comboId).ToListAsync();
+                        var mainProductIds = comboConfig.Where(c => c.IsMain).Select(c => c.ProductId).ToList();
+                        bool hasMain = cartItemsList.Any(ci => ci.AppliedComboId == comboId && mainProductIds.Contains(ci.ProductVariant.ProductId));
+
+                        if (hasMain)
+                        {
+                            var config = comboConfig.FirstOrDefault(c => c.ProductId == item.ProductVariant.ProductId);
+                            if (config != null && !config.IsMain)
+                            {
+                                if (config.DiscountType == "Percentage")
+                                    price = price * (1 - config.DiscountValue / 100);
+                                else if (config.DiscountType == "FixedAmount")
+                                    price = Math.Max(0, price - config.DiscountValue);
+                            }
+                        }
+                        else
+                        {
+                            item.AppliedComboId = null;
+                        }
+                    }
+
+                    calculatedPrices[item.Id] = price;
+                    subTotal += price * item.Quantity;
+                }
+
                 decimal discountValue = 0;
                 Promotion appliedPromotion = null;
 
@@ -179,54 +232,14 @@ namespace ECommerce1.Services
                     priceBeforePoints -= discountFromPoints;
                 }
 
-                decimal shippingFee = 0;
-                string finalWardId = request.WardId;
-
-                if (request.ShippingInfoId.HasValue && request.ShippingInfoId.Value > 0)
-                {
-                    var shippingInfo = await _context.ShippingInfos.FindAsync(request.ShippingInfoId.Value);
-                    if (shippingInfo != null)
-                    {
-                        finalWardId = shippingInfo.WardId;
-                    }
-                }
-
-                if (!string.IsNullOrEmpty(finalWardId))
-                {
-                    var ward = await _context.Wards
-                        .Include(w => w.Province)
-                        .FirstOrDefaultAsync(w => w.Id == finalWardId);
-                    if (ward != null)
-                    {
-                        decimal baseFee = 35000;
-                        string provinceName = ward.Province?.Name ?? "";
-                        if (provinceName.Contains("Hồ Chí Minh", StringComparison.OrdinalIgnoreCase) || 
-                            provinceName.Contains("Hà Nội", StringComparison.OrdinalIgnoreCase) || 
-                            provinceName.Contains("Đà Nẵng", StringComparison.OrdinalIgnoreCase))
-                        {
-                            baseFee = 22000;
-                        }
-                        shippingFee = baseFee;
-                    }
-                }
-
-                decimal finalPrice = priceBeforePoints + shippingFee;
-                if (finalPrice < 0) finalPrice = 0;
-
-                // Tích lũy điểm thưởng: 0.2% trên số tiền thanh toán cuối cùng
-                int pointsEarned = (int)(finalPrice * 0.002m);
-
-                if (pointsRedeemed > 0)
-                {
-                    user.RewardPoints -= pointsRedeemed;
-                }
-
-                // 5.2. Xử lý địa chỉ giao hàng (Snapshot)
+                // 5.2. Xử lý địa chỉ giao hàng (Snapshot) & Tọa độ giao hàng
                 string receiverName = "";
                 string receiverPhone = "";
                 string shippingAddressLine = "";
                 string shippingWard = "";
                 string shippingProvince = "";
+                double? deliveryLat = null;
+                double? deliveryLng = null;
 
                 if (request.ShippingInfoId.HasValue && request.ShippingInfoId.Value > 0)
                 {
@@ -242,6 +255,8 @@ namespace ECommerce1.Services
                     shippingAddressLine = shippingInfo.AddressLine;
                     shippingWard = shippingInfo.Ward != null ? shippingInfo.Ward.Name : "";
                     shippingProvince = shippingInfo.Ward != null && shippingInfo.Ward.Province != null ? shippingInfo.Ward.Province.Name : "";
+                    deliveryLat = shippingInfo.Latitude;
+                    deliveryLng = shippingInfo.Longitude;
                 }
                 else
                 {
@@ -257,6 +272,51 @@ namespace ECommerce1.Services
                     shippingAddressLine = request.AddressLine;
                     shippingWard = ward != null ? ward.Name : "";
                     shippingProvince = ward != null && ward.Province != null ? ward.Province.Name : "";
+                    deliveryLat = request.DeliveryLatitude;
+                    deliveryLng = request.DeliveryLongitude;
+                }
+
+                // 5.3. Tính phí giao hàng (Estimate Fee) qua Ahamove
+                decimal shippingFee = 0;
+                bool isAhamoveCalculated = false;
+
+                if (deliveryLat.HasValue && deliveryLng.HasValue)
+                {
+                    try
+                    {
+                        var destAddress = $"{shippingAddressLine}, {shippingWard}, {shippingProvince}";
+                        shippingFee = await _ahamoveService.EstimateFeeAsync(deliveryLat.Value, deliveryLng.Value, destAddress);
+                        isAhamoveCalculated = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        // Ghi log lỗi nếu cần thiết, ở đây chúng ta sẽ fallback về tính phí mặc định để không block khách thanh toán
+                        Console.WriteLine($"Lỗi gọi API Ahamove: {ex.Message}. Sử dụng cách tính phí mặc định làm phương án dự phòng.");
+                    }
+                }
+
+                // Fallback nếu không có tọa độ hoặc API Ahamove gặp sự cố
+                if (!isAhamoveCalculated)
+                {
+                    decimal baseFee = 35000;
+                    if (shippingProvince.Contains("Hồ Chí Minh", StringComparison.OrdinalIgnoreCase) || 
+                        shippingProvince.Contains("Hà Nội", StringComparison.OrdinalIgnoreCase) || 
+                        shippingProvince.Contains("Đà Nẵng", StringComparison.OrdinalIgnoreCase))
+                    {
+                        baseFee = 22000;
+                    }
+                    shippingFee = baseFee;
+                }
+
+                decimal finalPrice = priceBeforePoints + shippingFee;
+                if (finalPrice < 0) finalPrice = 0;
+
+                // Tích lũy điểm thưởng: 0.2% trên số tiền thanh toán cuối cùng
+                int pointsEarned = (int)(finalPrice * 0.002m);
+
+                if (pointsRedeemed > 0)
+                {
+                    user.RewardPoints -= pointsRedeemed;
                 }
 
                 // 6. Tạo đơn hàng (Order)
@@ -268,6 +328,8 @@ namespace ECommerce1.Services
                     ShippingAddressLine = shippingAddressLine,
                     ShippingWard = shippingWard,
                     ShippingProvince = shippingProvince,
+                    DeliveryLatitude = deliveryLat,
+                    DeliveryLongitude = deliveryLng,
                     PromotionId = appliedPromotion?.Id,
                     TotalPrice = finalPrice,
                     OrderStatusId = 1, // 1 = Pending (Chờ thanh toán)
@@ -284,12 +346,17 @@ namespace ECommerce1.Services
                 // 7. Tạo OrderItems và trừ Tồn kho giữ chỗ (ReservedStock)
                 foreach (var item in cart.CartItems)
                 {
+                    decimal finalItemPrice = calculatedPrices.ContainsKey(item.Id) ? calculatedPrices[item.Id] : item.ProductVariant.Price;
+                    decimal comboDiscountAmt = item.ProductVariant.Price - finalItemPrice;
+
                     var orderItem = new OrderItem
                     {
                         OrderId = newOrder.Id,
                         VariantId = item.VariantId,
                         Quantity = item.Quantity,
-                        PriceAtPurchase = item.ProductVariant.Price
+                        PriceAtPurchase = finalItemPrice,
+                        AppliedComboId = item.AppliedComboId,
+                        ComboDiscountAmount = comboDiscountAmt
                     };
                     _context.OrderItems.Add(orderItem);
 
@@ -430,8 +497,8 @@ namespace ECommerce1.Services
                     }
                 }
             }
-            // 2. Chuyển từ các trạng thái đã xác nhận/đang giao (2, 3) sang Hủy (5) hoặc Thất bại (6) -> Hoàn trả kho tổng (vì đã trừ ở bước 1)
-            else if ((oldStatusId == 2 || oldStatusId == 3) && (newStatusId == 5 || newStatusId == 6))
+            // 2. Chuyển từ các trạng thái đã xác nhận/đang giao (2, 3) sang Hủy (5), Thất bại (6) hoặc Hoàn tiền (7) -> Hoàn trả kho tổng (vì đã trừ ở bước 1)
+            else if ((oldStatusId == 2 || oldStatusId == 3) && (newStatusId == 5 || newStatusId == 6 || newStatusId == 7))
             {
                 foreach (var item in order.OrderItems)
                 {
@@ -441,8 +508,8 @@ namespace ECommerce1.Services
                     }
                 }
             }
-            // 3. Chuyển từ Chờ duyệt (1) sang Hủy (5) hoặc Thất bại (6) -> Chỉ giải phóng kho giữ chỗ (vì chưa trừ kho tổng)
-            else if (oldStatusId == 1 && (newStatusId == 5 || newStatusId == 6))
+            // 3. Chuyển từ Chờ duyệt (1) sang Hủy (5), Thất bại (6) hoặc Hoàn tiền (7) -> Chỉ giải phóng kho giữ chỗ (vì chưa trừ kho tổng)
+            else if (oldStatusId == 1 && (newStatusId == 5 || newStatusId == 6 || newStatusId == 7))
             {
                 foreach (var item in order.OrderItems)
                 {
@@ -486,8 +553,8 @@ namespace ECommerce1.Services
                 }
             }
 
-            // Xử lý hoàn điểm khi hủy đơn
-            if ((newStatusId == 5 || newStatusId == 6) && (oldStatusId == 1 || oldStatusId == 2 || oldStatusId == 3))
+            // Xử lý hoàn điểm khi hủy đơn hoặc hoàn tiền
+            if ((newStatusId == 5 || newStatusId == 6 || newStatusId == 7) && (oldStatusId == 1 || oldStatusId == 2 || oldStatusId == 3))
             {
                 var user = await _context.Users.FindAsync(order.UserId);
                 if (user != null && order.PointsRedeemed > 0)
@@ -509,6 +576,34 @@ namespace ECommerce1.Services
                     if (user.AccumulatedPoints < 0) user.AccumulatedPoints = 0;
 
                     user.RewardPoints += order.PointsRedeemed;
+                }
+            }
+
+            // Hoàn tiền tự động qua cổng thanh toán Stripe nếu có
+            if (newStatusId == 7)
+            {
+                var payment = await _context.Payments
+                    .FirstOrDefaultAsync(p => p.OrderId == order.Id && p.Status == "succeeded" && p.Provider == "stripe");
+
+                if (payment != null && !string.IsNullOrEmpty(payment.ProviderTransactionId))
+                {
+                    var stripeProvider = _paymentProviders.FirstOrDefault(p => p.ProviderName.Equals("stripe", StringComparison.OrdinalIgnoreCase));
+                    if (stripeProvider != null)
+                    {
+                        try
+                        {
+                            bool refundSuccess = await stripeProvider.RefundAsync(payment.ProviderTransactionId, payment.Amount);
+                            if (refundSuccess)
+                            {
+                                payment.Status = "refunded";
+                                payment.UpdatedAt = DateTime.UtcNow;
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            throw new Exception($"Lỗi tự động hoàn tiền qua Stripe: {ex.Message}. Vui lòng kiểm tra lại cấu hình hoặc hoàn tiền thủ công.", ex);
+                        }
+                    }
                 }
             }
 
@@ -549,6 +644,77 @@ namespace ECommerce1.Services
                 PointsRedeemed = order.PointsRedeemed,
                 DiscountFromPoints = order.DiscountFromPoints,
                 Note = order.Note,
+                DeliveryLatitude = order.DeliveryLatitude,
+                DeliveryLongitude = order.DeliveryLongitude,
+                AhamoveOrderId = order.AhamoveOrderId,
+                AhamoveStatus = order.AhamoveStatus,
+                AhamoveSharedLink = order.AhamoveSharedLink,
+                ActualShippingFee = order.ActualShippingFee,
+                Items = order.OrderItems.Select(oi => new OrderItemResponse
+                {
+                    Id = oi.Id,
+                    VariantId = oi.VariantId,
+                    ProductName = oi.ProductVariant != null && oi.ProductVariant.Product != null ? oi.ProductVariant.Product.Name : "Sản phẩm không rõ",
+                    VariantName = oi.ProductVariant != null ? oi.ProductVariant.Name : "Biến thể không rõ",
+                    Quantity = oi.Quantity,
+                    PriceAtPurchase = oi.PriceAtPurchase
+                }).ToList()
+            };
+        }
+
+        public async Task<OrderResponse> ShipWithAhamoveAsync(int orderId)
+        {
+            var order = await _context.Orders
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.ProductVariant)
+                        .ThenInclude(pv => pv.Product)
+                .Include(o => o.OrderStatus)
+                .FirstOrDefaultAsync(o => o.Id == orderId);
+
+            if (order == null)
+                throw new KeyNotFoundException("Không tìm thấy đơn hàng.");
+
+            if (!string.IsNullOrEmpty(order.AhamoveOrderId))
+                throw new InvalidOperationException("Đơn hàng này đã được gửi sang Ahamove trước đó.");
+
+            if (!order.DeliveryLatitude.HasValue || !order.DeliveryLongitude.HasValue)
+                throw new InvalidOperationException("Đơn hàng chưa có tọa độ kinh độ/vĩ độ (Lat/Lng) để giao hàng. Vui lòng cập nhật tọa độ.");
+
+            // Gọi dịch vụ Ahamove để tạo đơn
+            var ahamoveResponse = await _ahamoveService.CreateOrderAsync(order);
+
+            // Cập nhật thông tin đơn hàng sang trạng thái đang vận chuyển (StatusId = 3)
+            order.AhamoveOrderId = ahamoveResponse.OrderId;
+            order.AhamoveStatus = ahamoveResponse.Status;
+            order.AhamoveSharedLink = ahamoveResponse.SharedLink;
+            order.ActualShippingFee = ahamoveResponse.TotalFee;
+            order.OrderStatusId = 3; // 3 = Shipping
+
+            await _context.SaveChangesAsync();
+
+            return new OrderResponse
+            {
+                Id = order.Id,
+                StatusId = order.OrderStatusId,
+                StatusName = "Đang vận chuyển",
+                TotalPrice = order.TotalPrice,
+                CreatedAt = order.CreatedAt,
+                UserId = order.UserId,
+                ReceiverName = order.ReceiverName,
+                ReceiverPhone = order.ReceiverPhone,
+                ShippingAddress = $"{order.ShippingAddressLine}, {order.ShippingWard}, {order.ShippingProvince}",
+                PaymentMethod = order.PaymentMethod,
+                PromotionCode = order.Promotion != null ? order.Promotion.Code : null,
+                PointsEarned = order.PointsEarned,
+                PointsRedeemed = order.PointsRedeemed,
+                DiscountFromPoints = order.DiscountFromPoints,
+                Note = order.Note,
+                DeliveryLatitude = order.DeliveryLatitude,
+                DeliveryLongitude = order.DeliveryLongitude,
+                AhamoveOrderId = order.AhamoveOrderId,
+                AhamoveStatus = order.AhamoveStatus,
+                AhamoveSharedLink = order.AhamoveSharedLink,
+                ActualShippingFee = order.ActualShippingFee,
                 Items = order.OrderItems.Select(oi => new OrderItemResponse
                 {
                     Id = oi.Id,

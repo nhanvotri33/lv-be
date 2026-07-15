@@ -38,6 +38,14 @@ namespace ECommerce.Models
         
         public string? Note { get; set; } // Ghi chú giao hàng từ khách hàng
 
+        // --- Ahamove Integration Fields ---
+        public double? DeliveryLatitude { get; set; }
+        public double? DeliveryLongitude { get; set; }
+        public string? AhamoveOrderId { get; set; }
+        public string? AhamoveStatus { get; set; }
+        public string? AhamoveSharedLink { get; set; }
+        public decimal? ActualShippingFee { get; set; }
+
         public virtual ICollection<OrderItem> OrderItems { get; set; }
     }
 }

@@ -1,4 +1,5 @@
 using ECommerce.Models;
+using ECommerce1.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System;
@@ -11,40 +12,67 @@ namespace ECommerce1.Controllers
     public class ShippingController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IAhamoveService _ahamoveService;
 
-        public ShippingController(ApplicationDbContext context)
+        public ShippingController(ApplicationDbContext context, IAhamoveService ahamoveService)
         {
             _context = context;
+            _ahamoveService = ahamoveService;
         }
 
         // POST /api/Shipping/calculate-fee
         [HttpPost("calculate-fee")]
         public async Task<IActionResult> CalculateShippingFee([FromBody] ShippingFeeRequest request)
         {
+            // Nếu có tọa độ thì ưu tiên tính phí ship bằng Ahamove
+            if (request.Latitude.HasValue && request.Longitude.HasValue)
+            {
+                try
+                {
+                    var ward = await _context.Wards
+                        .Include(w => w.Province)
+                        .FirstOrDefaultAsync(w => w.Id == request.WardId);
+
+                    string provinceName = ward?.Province?.Name ?? "";
+                    string wardName = ward?.Name ?? "";
+                    string destAddress = $"{request.AddressLine}, {wardName}, {provinceName}";
+
+                    decimal ahamoveFee = await _ahamoveService.EstimateFeeAsync(request.Latitude.Value, request.Longitude.Value, destAddress);
+                    return Ok(new ShippingFeeResponse
+                    {
+                        Fee = ahamoveFee,
+                        Carrier = "Ahamove (Siêu tốc)",
+                        EstimatedDeliveryDays = "2-4 giờ"
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Lỗi gọi API Ahamove trong ShippingController: {ex.Message}. Sử dụng cách tính phí mặc định làm phương án dự phòng.");
+                }
+            }
+
             if (string.IsNullOrEmpty(request.WardId))
             {
-                return BadRequest("Vui lòng cung cấp mã phường/xã (WardId).");
+                return BadRequest("Vui lòng cung cấp mã phường/xã (WardId) hoặc tọa độ.");
             }
 
             // Lấy thông tin tỉnh/thành, phường/xã từ DB để tính toán phí ship động
-            var ward = await _context.Wards
+            var dbWard = await _context.Wards
                 .Include(w => w.Province)
                 .FirstOrDefaultAsync(w => w.Id == request.WardId);
 
-            if (ward == null)
+            if (dbWard == null)
             {
                 return NotFound("Không tìm thấy khu vực được chỉ định.");
             }
 
             // Logic tính toán phí ship động (Ví dụ giả lập Giao Hàng Nhanh / Giao Hàng Tiết Kiệm)
-            // Nếu giao nội tỉnh (ví dụ TP. Hồ Chí Minh hoặc Hà Nội) -> Phí ship rẻ (20.000đ - 25.000đ)
-            // Nếu giao ngoại tỉnh -> Phí ship đắt hơn (35.000đ - 50.000đ)
             decimal baseFee = 35000;
-            string provinceName = ward.Province?.Name ?? "";
+            string dbProvinceName = dbWard.Province?.Name ?? "";
 
-            if (provinceName.Contains("Hồ Chí Minh", StringComparison.OrdinalIgnoreCase) || 
-                provinceName.Contains("Hà Nội", StringComparison.OrdinalIgnoreCase) || 
-                provinceName.Contains("Đà Nẵng", StringComparison.OrdinalIgnoreCase))
+            if (dbProvinceName.Contains("Hồ Chí Minh", StringComparison.OrdinalIgnoreCase) || 
+                dbProvinceName.Contains("Hà Nội", StringComparison.OrdinalIgnoreCase) || 
+                dbProvinceName.Contains("Đà Nẵng", StringComparison.OrdinalIgnoreCase))
             {
                 baseFee = 22000;
             }
@@ -56,7 +84,7 @@ namespace ECommerce1.Controllers
             return Ok(new ShippingFeeResponse
             {
                 Fee = finalFee,
-                Carrier = "Giao Hàng Nhanh (GHN)",
+                Carrier = "Giao hàng tiêu chuẩn",
                 EstimatedDeliveryDays = baseFee == 22000 ? "1-2 ngày" : "3-5 ngày"
             });
         }
@@ -66,6 +94,9 @@ namespace ECommerce1.Controllers
     {
         public string WardId { get; set; } = string.Empty;
         public decimal TotalWeightKg { get; set; } = 1.0m;
+        public double? Latitude { get; set; }
+        public double? Longitude { get; set; }
+        public string AddressLine { get; set; } = string.Empty;
     }
 
     public class ShippingFeeResponse

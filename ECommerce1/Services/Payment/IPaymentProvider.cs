@@ -8,6 +8,7 @@ namespace ECommerce1.Services.Payment
         string ProviderName { get; }
         Task<string> CreateCheckoutSessionAsync(Order order, string successUrl, string cancelUrl);
         Task<PaymentVerificationResult> VerifySessionAsync(string sessionId);
+        Task<bool> RefundAsync(string transactionId, decimal amount);
     }
     
     public class PaymentVerificationResult

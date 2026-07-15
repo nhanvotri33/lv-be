@@ -25,5 +25,11 @@ namespace ECommerce1.Services.Payment
                 Message = "Thanh toán qua ví điện tử MoMo giả lập thành công!"
             });
         }
+
+        public Task<bool> RefundAsync(string transactionId, decimal amount)
+        {
+            // Giả lập hoàn tiền MoMo thành công
+            return Task.FromResult(true);
+        }
     }
 }

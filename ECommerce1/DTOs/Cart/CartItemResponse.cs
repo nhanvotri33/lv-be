@@ -10,5 +10,6 @@ namespace ECommerce1.DTOs.Cart
         public decimal Price { get; set; }
         public int Quantity { get; set; }
         public decimal SubTotal => Price * Quantity;
+        public int? AppliedComboId { get; set; }
     }
 }
