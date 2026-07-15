@@ -52,21 +52,71 @@ namespace ECommerce1.Controllers
                 await _context.SaveChangesAsync();
             }
 
+            // Lấy danh sách item
+            var items = cart.CartItems?.ToList() ?? new System.Collections.Generic.List<CartItem>();
+            var responseItems = new System.Collections.Generic.List<CartItemResponse>();
+
+            bool dbChanged = false;
+
+            foreach (var item in items)
+            {
+                decimal price = item.ProductVariant?.Price ?? 0;
+
+                if (item.AppliedComboId.HasValue)
+                {
+                    int comboId = item.AppliedComboId.Value;
+                    // Lấy cấu hình combo
+                    var comboConfig = await _context.ProductComboItems.Where(c => c.ProductComboId == comboId).ToListAsync();
+
+                    var mainProductIds = comboConfig.Where(c => c.IsMain).Select(c => c.ProductId).ToList();
+
+                    // Check if cart has main product for this combo
+                    bool hasMain = items.Any(ci => ci.AppliedComboId == comboId && ci.ProductVariant != null && mainProductIds.Contains(ci.ProductVariant.ProductId));
+
+                    if (hasMain)
+                    {
+                        var config = comboConfig.FirstOrDefault(c => c.ProductId == item.ProductVariant?.ProductId);
+                        if (config != null && !config.IsMain)
+                        {
+                            if (config.DiscountType == "Percentage")
+                                price = price * (1 - config.DiscountValue / 100);
+                            else if (config.DiscountType == "FixedAmount")
+                                price = Math.Max(0, price - config.DiscountValue);
+                        }
+                    }
+                    else
+                    {
+                        // Không có sản phẩm chính -> Hủy combo
+                        item.AppliedComboId = null;
+                        _context.CartItems.Update(item);
+                        dbChanged = true;
+                    }
+                }
+
+                responseItems.Add(new CartItemResponse
+                {
+                    Id = item.Id,
+                    VariantId = item.VariantId,
+                    ProductName = item.ProductVariant?.Product?.Name ?? "Sản phẩm đã xóa",
+                    VariantName = item.ProductVariant?.Name ?? "Biến thể đã xóa",
+                    ImageUrl = item.ProductVariant?.ImageId ?? item.ProductVariant?.Product?.ThumbnailImage,
+                    Price = price,
+                    Quantity = item.Quantity,
+                    AppliedComboId = item.AppliedComboId
+                });
+            }
+
+            if (dbChanged)
+            {
+                await _context.SaveChangesAsync();
+            }
+
             // Map ra DTO
             var response = new CartResponse
             {
                 Id = cart.Id,
                 UserId = cart.UserId,
-                Items = cart.CartItems?.Select(ci => new CartItemResponse
-                {
-                    Id = ci.Id,
-                    VariantId = ci.VariantId,
-                    ProductName = ci.ProductVariant?.Product?.Name ?? "Sản phẩm đã xóa",
-                    VariantName = ci.ProductVariant?.Name ?? "Biến thể đã xóa",
-                    ImageUrl = ci.ProductVariant?.ImageId ?? ci.ProductVariant?.Product?.ThumbnailImage,
-                    Price = ci.ProductVariant?.Price ?? 0,
-                    Quantity = ci.Quantity
-                }).ToList() ?? new System.Collections.Generic.List<CartItemResponse>()
+                Items = responseItems
             };
 
             return Ok(response);
@@ -137,7 +187,8 @@ namespace ECommerce1.Controllers
                     {
                         CartId = cart.Id,
                         VariantId = item.VariantId,
-                        Quantity = item.Quantity
+                        Quantity = item.Quantity,
+                        AppliedComboId = item.AppliedComboId
                     };
                     _context.CartItems.Add(cartItem);
                 }
@@ -154,5 +205,6 @@ namespace ECommerce1.Controllers
     {
         public int VariantId { get; set; }
         public int Quantity { get; set; }
+        public int? AppliedComboId { get; set; }
     }
 }

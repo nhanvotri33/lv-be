@@ -13,5 +13,6 @@ namespace ECommerce1.Services
         Task CancelOrderAsync(int id, Guid? userId, string? phoneNumber);
         Task UpdateOrderStatusAsync(int id, int newStatusId);
         Task<OrderResponse> TrackOrderAsync(int id, string phoneNumber);
+        Task<OrderResponse> ShipWithAhamoveAsync(int orderId);
     }
 }

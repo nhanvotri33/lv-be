@@ -1,5 +1,6 @@
 using ECommerce.Models;
 using Microsoft.Extensions.Configuration;
+using Stripe;
 using Stripe.Checkout;
 using System;
 using System.Collections.Generic;
@@ -21,31 +22,35 @@ namespace ECommerce1.Services.Payment
 
         public async Task<string> CreateCheckoutSessionAsync(Order order, string successUrl, string cancelUrl)
         {
+            // Trích xuất danh sách sản phẩm hiển thị trong mô tả của Stripe Checkout
+            var productNamesList = order.OrderItems != null 
+                ? string.Join(", ", order.OrderItems.Select(i => $"{i.ProductVariant?.Product?.Name ?? "Sản phẩm"} (x{i.Quantity})"))
+                : "Thanh toán đơn hàng";
+
             var options = new SessionCreateOptions
             {
                 PaymentMethodTypes = new List<string> { "card" },
-                LineItems = new List<SessionLineItemOptions>(),
+                LineItems = new List<SessionLineItemOptions>
+                {
+                    new SessionLineItemOptions
+                    {
+                        PriceData = new SessionLineItemPriceDataOptions
+                        {
+                            UnitAmount = (long)order.TotalPrice,
+                            Currency = "vnd",
+                            ProductData = new SessionLineItemPriceDataProductDataOptions
+                            {
+                                Name = $"Thanh toán đơn hàng #PS{order.Id}",
+                                Description = productNamesList.Length > 250 ? productNamesList.Substring(0, 247) + "..." : productNamesList
+                            },
+                        },
+                        Quantity = 1,
+                    }
+                },
                 Mode = "payment",
                 SuccessUrl = successUrl,
                 CancelUrl = cancelUrl,
             };
-
-            foreach (var item in order.OrderItems)
-            {
-                options.LineItems.Add(new SessionLineItemOptions
-                {
-                    PriceData = new SessionLineItemPriceDataOptions
-                    {
-                        UnitAmount = (long)(item.PriceAtPurchase),
-                        Currency = "vnd",
-                        ProductData = new SessionLineItemPriceDataProductDataOptions
-                        {
-                            Name = item.ProductVariant?.Product?.Name ?? "Sản phẩm",
-                        },
-                    },
-                    Quantity = item.Quantity,
-                });
-            }
 
             var service = new SessionService();
             Session session = await service.CreateAsync(options);
@@ -73,6 +78,28 @@ namespace ECommerce1.Services.Payment
                 TransactionId = null,
                 Message = "Thanh toán chưa hoàn tất"
             };
+        }
+
+        public async Task<bool> RefundAsync(string transactionId, decimal amount)
+        {
+            if (string.IsNullOrEmpty(transactionId))
+                throw new ArgumentException("Mã giao dịch Stripe không hợp lệ.");
+
+            // Lấy thông tin PaymentIntent thực tế để lấy đúng số tiền đã charge trên Stripe (tránh lệch số do phí ship/giảm giá chưa đồng bộ của các đơn hàng cũ)
+            var piService = new PaymentIntentService();
+            var paymentIntent = await piService.GetAsync(transactionId);
+            long actualAmount = paymentIntent.Amount;
+
+            var options = new RefundCreateOptions
+            {
+                PaymentIntent = transactionId,
+                Amount = actualAmount
+            };
+
+            var service = new RefundService();
+            var refund = await service.CreateAsync(options);
+
+            return refund.Status == "succeeded" || refund.Status == "pending";
         }
     }
 }

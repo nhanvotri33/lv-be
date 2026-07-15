@@ -10,6 +10,9 @@ namespace ECommerce1.DTOs.Order
         public string? AddressLine { get; set; }
         public string? WardId { get; set; }
 
+        public double? DeliveryLatitude { get; set; }
+        public double? DeliveryLongitude { get; set; }
+
         public string? PromotionCode { get; set; } // Mã giảm giá (nếu có)
         public string? PaymentMethod { get; set; } // COD, Stripe, Momo, etc.
         public int PointsToRedeem { get; set; } = 0;

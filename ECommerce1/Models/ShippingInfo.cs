@@ -17,6 +17,8 @@ namespace ECommerce.Models
         [ForeignKey("WardId")]
         public virtual Ward Ward { get; set; }
         public bool IsDefault { get; set; }
+        public double? Latitude { get; set; }
+        public double? Longitude { get; set; }
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
         public Guid UserId { get; set; }

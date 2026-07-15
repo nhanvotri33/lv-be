@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
@@ -18,5 +18,11 @@ namespace ECommerce.Models
         public int VariantId { get; set; }
         [ForeignKey("VariantId")]
         public virtual ProductVariant ProductVariant { get; set; }
+
+        public int? AppliedComboId { get; set; }
+        [ForeignKey("AppliedComboId")]
+        public virtual ProductCombo? AppliedCombo { get; set; }
+
+        public decimal ComboDiscountAmount { get; set; } = 0;
     }
 }

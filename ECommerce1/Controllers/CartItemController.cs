@@ -72,7 +72,8 @@ namespace ECommerce1.Controllers
                 {
                     CartId = cart.Id,
                     VariantId = request.VariantId,
-                    Quantity = request.Quantity
+                    Quantity = request.Quantity,
+                    AppliedComboId = request.AppliedComboId
                 };
                 _context.CartItems.Add(newItem);
             }
