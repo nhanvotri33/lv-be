@@ -21,6 +21,7 @@ namespace ECommerce1.DTOs.Order
         public int PointsRedeemed { get; set; }
         public decimal DiscountFromPoints { get; set; }
         public string? Note { get; set; } // Ghi chú giao hàng
+        public string? ShippingCarrier { get; set; } // Đơn vị vận chuyển (Ahamove, GHN, v.v...)
         
         // --- Ahamove Integration ---
         public double? DeliveryLatitude { get; set; }
