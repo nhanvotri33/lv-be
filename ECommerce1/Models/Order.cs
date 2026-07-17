@@ -45,6 +45,7 @@ namespace ECommerce.Models
         public string? AhamoveStatus { get; set; }
         public string? AhamoveSharedLink { get; set; }
         public decimal? ActualShippingFee { get; set; }
+        public string? ShippingCarrier { get; set; }
 
         public virtual ICollection<OrderItem> OrderItems { get; set; }
     }

@@ -7,5 +7,7 @@ namespace ECommerce1.DTOs.ShippingInfo
         public string AddressLine { get; set; }
         public string WardId { get; set; }
         public bool IsDefault { get; set; }
+        public double? Latitude { get; set; }  // Tọa độ từ Goong Maps
+        public double? Longitude { get; set; } // Tọa độ từ Goong Maps
     }
 }

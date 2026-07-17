@@ -46,6 +46,8 @@ namespace ECommerce1.Controllers
                     ProvinceId = s.Ward != null ? s.Ward.ProvinceId : "",
                     ProvinceName = s.Ward != null && s.Ward.Province != null ? s.Ward.Province.Name : "",
                     IsDefault = s.IsDefault,
+                    Latitude = s.Latitude,
+                    Longitude = s.Longitude,
                     CreatedAt = s.CreatedAt,
                     UpdatedAt = s.UpdatedAt
                 })
@@ -91,6 +93,8 @@ namespace ECommerce1.Controllers
                 AddressLine = request.AddressLine,
                 WardId = request.WardId,
                 IsDefault = request.IsDefault,
+                Latitude = request.Latitude,   // Lưu tọa độ từ Goong Maps
+                Longitude = request.Longitude,  // Lưu tọa độ từ Goong Maps
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
@@ -139,6 +143,9 @@ namespace ECommerce1.Controllers
             info.AddressLine = request.AddressLine;
             info.WardId = request.WardId;
             info.IsDefault = request.IsDefault;
+            // Chỉ cập nhật tọa độ nếu có dữ liệu mới từ Goong Maps
+            if (request.Latitude.HasValue) info.Latitude = request.Latitude;
+            if (request.Longitude.HasValue) info.Longitude = request.Longitude;
             info.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();

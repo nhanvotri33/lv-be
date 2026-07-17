@@ -24,39 +24,11 @@ namespace ECommerce1.Controllers
         [HttpPost("calculate-fee")]
         public async Task<IActionResult> CalculateShippingFee([FromBody] ShippingFeeRequest request)
         {
-            // Nếu có tọa độ thì ưu tiên tính phí ship bằng Ahamove
-            if (request.Latitude.HasValue && request.Longitude.HasValue)
-            {
-                try
-                {
-                    var ward = await _context.Wards
-                        .Include(w => w.Province)
-                        .FirstOrDefaultAsync(w => w.Id == request.WardId);
-
-                    string provinceName = ward?.Province?.Name ?? "";
-                    string wardName = ward?.Name ?? "";
-                    string destAddress = $"{request.AddressLine}, {wardName}, {provinceName}";
-
-                    decimal ahamoveFee = await _ahamoveService.EstimateFeeAsync(request.Latitude.Value, request.Longitude.Value, destAddress);
-                    return Ok(new ShippingFeeResponse
-                    {
-                        Fee = ahamoveFee,
-                        Carrier = "Ahamove (Siêu tốc)",
-                        EstimatedDeliveryDays = "2-4 giờ"
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Lỗi gọi API Ahamove trong ShippingController: {ex.Message}. Sử dụng cách tính phí mặc định làm phương án dự phòng.");
-                }
-            }
-
             if (string.IsNullOrEmpty(request.WardId))
             {
                 return BadRequest("Vui lòng cung cấp mã phường/xã (WardId) hoặc tọa độ.");
             }
 
-            // Lấy thông tin tỉnh/thành, phường/xã từ DB để tính toán phí ship động
             var dbWard = await _context.Wards
                 .Include(w => w.Province)
                 .FirstOrDefaultAsync(w => w.Id == request.WardId);
@@ -66,26 +38,81 @@ namespace ECommerce1.Controllers
                 return NotFound("Không tìm thấy khu vực được chỉ định.");
             }
 
-            // Logic tính toán phí ship động (Ví dụ giả lập Giao Hàng Nhanh / Giao Hàng Tiết Kiệm)
-            decimal baseFee = 35000;
-            string dbProvinceName = dbWard.Province?.Name ?? "";
+            var options = new List<ShippingOption>();
 
+            // 1. Tính phí Siêu tốc (Ahamove) nếu có tọa độ (Thêm vào đầu để làm tùy chọn nổi bật)
+            // LƯU Ý: Kho hàng của chúng ta ở Quận 8, TP.HCM, nên Ahamove CHỈ có thể giao trong khu vực TP.HCM.
+            string dbProvinceName = dbWard.Province?.Name ?? "";
+            
+            if (request.Latitude.HasValue && request.Longitude.HasValue && dbProvinceName.Contains("Hồ Chí Minh", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    string wardName = dbWard.Name ?? "";
+                    string destAddress = $"{request.AddressLine}, {wardName}, {dbProvinceName}";
+
+                    // Danh sách các dịch vụ Ahamove cung cấp tại Sài Gòn
+                    var ahamoveServices = new[] 
+                    {
+                        new { Id = "SGN-BIKE", Name = "Ahamove (Giao Siêu Tốc)", Days = "Trong vòng 1-2 giờ" },
+                        new { Id = "SGN-EXPRESS", Name = "Ahamove (Siêu Tốc - Tiết Kiệm)", Days = "Trong vòng 2-4 giờ" },
+                        new { Id = "SGN-POOL", Name = "Ahamove (Giao 4H)", Days = "Tối đa 4 giờ" }
+                    };
+
+                    var ahamoveTasks = ahamoveServices.Select(async s => 
+                    {
+                        try 
+                        {
+                            decimal fee = await _ahamoveService.EstimateFeeAsync(request.Latitude.Value, request.Longitude.Value, destAddress, s.Id);
+                            return new ShippingOption { Fee = fee, Carrier = s.Name, EstimatedDeliveryDays = s.Days };
+                        }
+                        catch 
+                        { 
+                            // Nếu service này không khả dụng cho tuyến đường, bỏ qua
+                            return null; 
+                        }
+                    });
+
+                    var results = await Task.WhenAll(ahamoveTasks);
+                    foreach (var res in results)
+                    {
+                        if (res != null) options.Add(res);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Lỗi tổng thể gọi API Ahamove: {ex.Message}. Bỏ qua tùy chọn Ahamove.");
+                }
+            }
+
+            // 2. Tính phí Tiêu chuẩn (Giao Hàng Nhanh / Tiết Kiệm)
+            decimal standardBaseFee = 35000;
+            
             if (dbProvinceName.Contains("Hồ Chí Minh", StringComparison.OrdinalIgnoreCase) || 
                 dbProvinceName.Contains("Hà Nội", StringComparison.OrdinalIgnoreCase) || 
                 dbProvinceName.Contains("Đà Nẵng", StringComparison.OrdinalIgnoreCase))
             {
-                baseFee = 22000;
+                standardBaseFee = 22000;
             }
 
-            // Điều chỉnh phí dựa trên tổng trọng lượng/thể tích của các mặt hàng trong giỏ nếu có
             decimal weightMarkup = request.TotalWeightKg > 2 ? (request.TotalWeightKg - 2) * 5000 : 0;
-            decimal finalFee = baseFee + weightMarkup;
+            decimal standardFinalFee = standardBaseFee + weightMarkup;
 
+            options.Add(new ShippingOption
+            {
+                Fee = standardFinalFee,
+                Carrier = "Giao Hàng Tiêu Chuẩn",
+                EstimatedDeliveryDays = standardBaseFee == 22000 ? "1-2 ngày" : "3-5 ngày"
+            });
+
+            // Nếu muốn mặc định là Giao hàng tiêu chuẩn, ta có thể đảo thứ tự hoặc Frontend sẽ tự chọn
+            // Trả về kết quả đầu tiên làm thông số tương thích ngược, và toàn bộ mảng Options
             return Ok(new ShippingFeeResponse
             {
-                Fee = finalFee,
-                Carrier = "Giao hàng tiêu chuẩn",
-                EstimatedDeliveryDays = baseFee == 22000 ? "1-2 ngày" : "3-5 ngày"
+                Fee = options[0].Fee,
+                Carrier = options[0].Carrier,
+                EstimatedDeliveryDays = options[0].EstimatedDeliveryDays,
+                Options = options
             });
         }
     }
@@ -99,10 +126,18 @@ namespace ECommerce1.Controllers
         public string AddressLine { get; set; } = string.Empty;
     }
 
+    public class ShippingOption
+    {
+        public decimal Fee { get; set; }
+        public string Carrier { get; set; } = string.Empty;
+        public string EstimatedDeliveryDays { get; set; } = string.Empty;
+    }
+
     public class ShippingFeeResponse
     {
         public decimal Fee { get; set; }
         public string Carrier { get; set; } = string.Empty;
         public string EstimatedDeliveryDays { get; set; } = string.Empty;
+        public List<ShippingOption> Options { get; set; } = new List<ShippingOption>();
     }
 }

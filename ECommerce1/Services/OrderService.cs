@@ -56,6 +56,7 @@ namespace ECommerce1.Services
                     AhamoveStatus = o.AhamoveStatus,
                     AhamoveSharedLink = o.AhamoveSharedLink,
                     ActualShippingFee = o.ActualShippingFee,
+                    ShippingCarrier = o.ShippingCarrier,
                     Items = o.OrderItems.Select(oi => new OrderItemResponse
                     {
                         Id = oi.Id,
@@ -101,6 +102,7 @@ namespace ECommerce1.Services
                     AhamoveStatus = o.AhamoveStatus,
                     AhamoveSharedLink = o.AhamoveSharedLink,
                     ActualShippingFee = o.ActualShippingFee,
+                    ShippingCarrier = o.ShippingCarrier,
                     Items = o.OrderItems.Select(oi => new OrderItemResponse
                     {
                         Id = oi.Id,
@@ -280,12 +282,17 @@ namespace ECommerce1.Services
                 decimal shippingFee = 0;
                 bool isAhamoveCalculated = false;
 
-                if (deliveryLat.HasValue && deliveryLng.HasValue)
+                if (deliveryLat.HasValue && deliveryLng.HasValue && !string.IsNullOrEmpty(request.ShippingCarrier) && request.ShippingCarrier.Contains("Ahamove", StringComparison.OrdinalIgnoreCase))
                 {
                     try
                     {
                         var destAddress = $"{shippingAddressLine}, {shippingWard}, {shippingProvince}";
-                        shippingFee = await _ahamoveService.EstimateFeeAsync(deliveryLat.Value, deliveryLng.Value, destAddress);
+                        string serviceId = "SGN-BIKE"; // Mặc định Siêu Tốc
+
+                        if (request.ShippingCarrier.Contains("4H", StringComparison.OrdinalIgnoreCase)) serviceId = "SGN-POOL";
+                        else if (request.ShippingCarrier.Contains("Tiết Kiệm", StringComparison.OrdinalIgnoreCase)) serviceId = "SGN-EXPRESS";
+
+                        shippingFee = await _ahamoveService.EstimateFeeAsync(deliveryLat.Value, deliveryLng.Value, destAddress, serviceId);
                         isAhamoveCalculated = true;
                     }
                     catch (Exception ex)
@@ -295,7 +302,7 @@ namespace ECommerce1.Services
                     }
                 }
 
-                // Fallback nếu không có tọa độ hoặc API Ahamove gặp sự cố
+                // Fallback nếu không có tọa độ, API Ahamove gặp sự cố, hoặc khách chọn Giao Hàng Tiêu Chuẩn
                 if (!isAhamoveCalculated)
                 {
                     decimal baseFee = 35000;
@@ -338,7 +345,9 @@ namespace ECommerce1.Services
                     PointsRedeemed = pointsRedeemed,
                     DiscountFromPoints = discountFromPoints,
                     Note = request.Note,
-                    PaymentMethod = request.PaymentMethod ?? "COD"
+                    PaymentMethod = request.PaymentMethod ?? "COD",
+                    ShippingCarrier = request.ShippingCarrier ?? (isAhamoveCalculated ? "Ahamove (Giao Siêu Tốc)" : "Giao Hàng Tiêu Chuẩn"),
+                    ActualShippingFee = shippingFee
                 };
                 _context.Orders.Add(newOrder);
                 await _context.SaveChangesAsync(); // Lưu để lấy Order.Id
@@ -650,6 +659,7 @@ namespace ECommerce1.Services
                 AhamoveStatus = order.AhamoveStatus,
                 AhamoveSharedLink = order.AhamoveSharedLink,
                 ActualShippingFee = order.ActualShippingFee,
+                ShippingCarrier = order.ShippingCarrier,
                 Items = order.OrderItems.Select(oi => new OrderItemResponse
                 {
                     Id = oi.Id,
@@ -680,8 +690,18 @@ namespace ECommerce1.Services
             if (!order.DeliveryLatitude.HasValue || !order.DeliveryLongitude.HasValue)
                 throw new InvalidOperationException("Đơn hàng chưa có tọa độ kinh độ/vĩ độ (Lat/Lng) để giao hàng. Vui lòng cập nhật tọa độ.");
 
+            // Xác định Service ID của Ahamove từ tên Đơn vị vận chuyển được chọn
+            string serviceId = "SGN-BIKE"; // Mặc định Siêu Tốc
+
+            if (!string.IsNullOrEmpty(order.ShippingCarrier))
+            {
+                if (order.ShippingCarrier.Contains("4H", StringComparison.OrdinalIgnoreCase)) serviceId = "SGN-POOL";
+                else if (order.ShippingCarrier.Contains("Tiết Kiệm", StringComparison.OrdinalIgnoreCase)) serviceId = "SGN-EXPRESS";
+                else if (order.ShippingCarrier.Contains("Siêu Tốc", StringComparison.OrdinalIgnoreCase)) serviceId = "SGN-BIKE";
+            }
+
             // Gọi dịch vụ Ahamove để tạo đơn
-            var ahamoveResponse = await _ahamoveService.CreateOrderAsync(order);
+            var ahamoveResponse = await _ahamoveService.CreateOrderAsync(order, serviceId);
 
             // Cập nhật thông tin đơn hàng sang trạng thái đang vận chuyển (StatusId = 3)
             order.AhamoveOrderId = ahamoveResponse.OrderId;
@@ -715,6 +735,7 @@ namespace ECommerce1.Services
                 AhamoveStatus = order.AhamoveStatus,
                 AhamoveSharedLink = order.AhamoveSharedLink,
                 ActualShippingFee = order.ActualShippingFee,
+                ShippingCarrier = order.ShippingCarrier,
                 Items = order.OrderItems.Select(oi => new OrderItemResponse
                 {
                     Id = oi.Id,
