@@ -182,6 +182,48 @@ namespace ECommerce1.Controllers
             _context.InventoryTransactions.Add(transaction);
             await _context.SaveChangesAsync();
 
+            // Xử lý lưu lô hàng vào Stock
+            if (actualQtyChange > 0)
+            {
+                var newDetail = new Stock
+                {
+                    ProductId = variant.ProductId,
+                    VariantId = variant.Id,
+                    QuantityIn = actualQtyChange,
+                    QuantityRemaining = actualQtyChange,
+                    Unit = "Cái",
+                    Price = request.Price,
+                    ReceivedDate = DateTime.UtcNow,
+                    ReceivingDetailId = transaction.Id
+                };
+                _context.Stocks.Add(newDetail);
+                await _context.SaveChangesAsync();
+            }
+            else if (actualQtyChange < 0)
+            {
+                int qtyToDeduct = Math.Abs(actualQtyChange);
+                var availableLots = await _context.Stocks
+                    .Where(d => d.ProductId == variant.ProductId && d.QuantityRemaining > 0)
+                    .OrderBy(d => d.ReceivedDate)
+                    .ToListAsync();
+
+                foreach (var lot in availableLots)
+                {
+                    if (qtyToDeduct <= 0) break;
+                    if (lot.QuantityRemaining >= qtyToDeduct)
+                    {
+                        lot.QuantityRemaining -= qtyToDeduct;
+                        qtyToDeduct = 0;
+                    }
+                    else
+                    {
+                        qtyToDeduct -= lot.QuantityRemaining;
+                        lot.QuantityRemaining = 0;
+                    }
+                }
+                await _context.SaveChangesAsync();
+            }
+
             // Cập nhật tồn kho tổng ở Product atomically từ tổng các biến thể để tránh race condition
             await _context.Database.ExecuteSqlRawAsync(
                 "UPDATE Products SET TotalStock = COALESCE((SELECT SUM(TotalStock) FROM ProductVariants WHERE ProductId = {0}), 0), " +
@@ -230,6 +272,32 @@ namespace ECommerce1.Controllers
             // Cập nhật tồn kho ở biến thể
             variant.TotalStock += qtyToRevert;
 
+            // Xử lý hoàn tác trong bảng Stock
+            if (transaction.QuantityChanged > 0)
+            {
+                var stockItem = await _context.Stocks
+                    .FirstOrDefaultAsync(d => d.ReceivingDetailId == transaction.Id);
+                if (stockItem != null)
+                {
+                    stockItem.QuantityRemaining = 0;
+                }
+            }
+            else if (transaction.QuantityChanged < 0)
+            {
+                var newDetail = new Stock
+                {
+                    ProductId = variant.ProductId,
+                    VariantId = variant.Id,
+                    QuantityIn = Math.Abs(transaction.QuantityChanged),
+                    QuantityRemaining = Math.Abs(transaction.QuantityChanged),
+                    Unit = "Cái",
+                    Price = transaction.Price,
+                    ReceivedDate = DateTime.UtcNow,
+                    ReceivingDetailId = transaction.Id
+                };
+                _context.Stocks.Add(newDetail);
+            }
+
             transaction.IsReverted = true;
             transaction.Note += " (Đã hoàn tác)";
 
@@ -243,6 +311,57 @@ namespace ECommerce1.Controllers
                 variant.ProductId);
 
             return Ok(new { Message = "Hoàn tác giao dịch kho thành công.", NewStock = variant.TotalStock });
+        }
+
+        // ================= GET: Xem tồn kho chi tiết (ADMIN) =================
+        [HttpGet("stock")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> GetStockDetails()
+        {
+            var stocks = await _context.Stocks
+                .Include(s => s.Product)
+                .Include(s => s.ProductVariant)
+                .Include(s => s.ReceivingTransaction)
+                .OrderByDescending(s => s.ReceivedDate)
+                .ToListAsync();
+
+            var response = stocks.Select(s => {
+                string transactionCode = "Điều chỉnh";
+                if (s.ReceivingDetailId.HasValue)
+                {
+                    string prefix = "TX";
+                    if (s.ReceivingTransaction != null)
+                    {
+                        if (s.ReceivingTransaction.TransactionType == "IMPORT_SUPPLIER")
+                            prefix = "ORD";
+                        else if (s.ReceivingTransaction.TransactionType == "IMPORT_RETURN")
+                            prefix = "REO";
+                        else if (s.ReceivingTransaction.TransactionType == "EXPORT_SELL")
+                            prefix = "PS";
+                        else if (s.ReceivingTransaction.TransactionType == "EXPORT_DEFECT")
+                            prefix = "ER";
+                    }
+                    transactionCode = $"#{prefix}{s.ReceivingDetailId}";
+                }
+
+                return new InventoryDetailDTO
+                {
+                    InventoryDetailId = s.StockId,
+                    ProductId = s.ProductId,
+                    ProductName = s.Product?.Name ?? "Sản phẩm không xác định",
+                    ReceivingDetailId = s.ReceivingDetailId,
+                    VariantId = s.VariantId,
+                    VariantName = s.ProductVariant?.Name,
+                    TransactionCode = transactionCode,
+                    QuantityIn = s.QuantityIn,
+                    QuantityRemaining = s.QuantityRemaining,
+                    Unit = s.Unit ?? "Cái",
+                    Price = s.Price,
+                    ReceivedDate = s.ReceivedDate
+                };
+            }).ToList();
+
+            return Ok(response);
         }
     }
 }

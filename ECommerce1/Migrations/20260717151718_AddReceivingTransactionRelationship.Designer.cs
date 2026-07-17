@@ -4,6 +4,7 @@ using ECommerce.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,10 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace ECommerce1.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260717151718_AddReceivingTransactionRelationship")]
+    partial class AddReceivingTransactionRelationship
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -294,6 +296,44 @@ namespace ECommerce1.Migrations
                         .IsUnique();
 
                     b.ToTable("CategoryBrandDefaults");
+                });
+
+            modelBuilder.Entity("ECommerce.Models.InventoryDetail", b =>
+                {
+                    b.Property<int>("InventoryDetailId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("InventoryDetailId"), 1L, 1);
+
+                    b.Property<decimal>("Price")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("ProductId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("QuantityIn")
+                        .HasColumnType("int");
+
+                    b.Property<int>("QuantityRemaining")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("ReceivedDate")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("ReceivingDetailId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Unit")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("InventoryDetailId");
+
+                    b.HasIndex("ProductId");
+
+                    b.HasIndex("ReceivingDetailId");
+
+                    b.ToTable("InventoryDetail");
                 });
 
             modelBuilder.Entity("ECommerce.Models.InventoryTransaction", b =>
@@ -979,49 +1019,6 @@ namespace ECommerce1.Migrations
                     b.ToTable("ShippingInfos");
                 });
 
-            modelBuilder.Entity("ECommerce.Models.Stock", b =>
-                {
-                    b.Property<int>("StockId")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("StockId"), 1L, 1);
-
-                    b.Property<decimal>("Price")
-                        .HasColumnType("decimal(18,2)");
-
-                    b.Property<int>("ProductId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("QuantityIn")
-                        .HasColumnType("int");
-
-                    b.Property<int>("QuantityRemaining")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("ReceivedDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int?>("ReceivingDetailId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Unit")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int?>("VariantId")
-                        .HasColumnType("int");
-
-                    b.HasKey("StockId");
-
-                    b.HasIndex("ProductId");
-
-                    b.HasIndex("ReceivingDetailId");
-
-                    b.HasIndex("VariantId");
-
-                    b.ToTable("Stock");
-                });
-
             modelBuilder.Entity("ECommerce.Models.Ward", b =>
                 {
                     b.Property<string>("Id")
@@ -1220,6 +1217,23 @@ namespace ECommerce1.Migrations
                     b.Navigation("Category");
                 });
 
+            modelBuilder.Entity("ECommerce.Models.InventoryDetail", b =>
+                {
+                    b.HasOne("ECommerce.Models.Product", "Product")
+                        .WithMany()
+                        .HasForeignKey("ProductId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("ECommerce.Models.InventoryTransaction", "ReceivingTransaction")
+                        .WithMany()
+                        .HasForeignKey("ReceivingDetailId");
+
+                    b.Navigation("Product");
+
+                    b.Navigation("ReceivingTransaction");
+                });
+
             modelBuilder.Entity("ECommerce.Models.InventoryTransaction", b =>
                 {
                     b.HasOne("ECommerce.Models.ProductVariant", "ProductVariant")
@@ -1405,29 +1419,6 @@ namespace ECommerce1.Migrations
                     b.Navigation("User");
 
                     b.Navigation("Ward");
-                });
-
-            modelBuilder.Entity("ECommerce.Models.Stock", b =>
-                {
-                    b.HasOne("ECommerce.Models.Product", "Product")
-                        .WithMany()
-                        .HasForeignKey("ProductId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("ECommerce.Models.InventoryTransaction", "ReceivingTransaction")
-                        .WithMany()
-                        .HasForeignKey("ReceivingDetailId");
-
-                    b.HasOne("ECommerce.Models.ProductVariant", "ProductVariant")
-                        .WithMany()
-                        .HasForeignKey("VariantId");
-
-                    b.Navigation("Product");
-
-                    b.Navigation("ProductVariant");
-
-                    b.Navigation("ReceivingTransaction");
                 });
 
             modelBuilder.Entity("ECommerce.Models.Ward", b =>

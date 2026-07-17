@@ -39,6 +39,7 @@ namespace ECommerce.Models
         public DbSet<User> Users { get; set; }
         public DbSet<RefreshToken> RefreshTokens { get; set; }
         public DbSet<InventoryTransaction> InventoryTransactions { get; set; }
+        public DbSet<Stock> Stocks { get; set; }
         public DbSet<OrderStatus> OrderStatuses { get; set; }
         public DbSet<Province> Provinces { get; set; }
         public DbSet<Ward> Wards { get; set; }
@@ -118,6 +119,7 @@ namespace ECommerce.Models
             modelBuilder.Entity<OrderItem>().Property(oi => oi.ComboDiscountAmount).HasColumnType("decimal(18,2)");
             modelBuilder.Entity<Promotion>().Property(p => p.DiscountValue).HasColumnType("decimal(18,2)");
             modelBuilder.Entity<Payment>().Property(p => p.Amount).HasColumnType("decimal(18,2)");
+            modelBuilder.Entity<Stock>().Property(id => id.Price).HasColumnType("decimal(18,2)");
 
             // 2. INDEXES AND STRING CONSTRAINTS
             modelBuilder.Entity<Product>(entity => {
