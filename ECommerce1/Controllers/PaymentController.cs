@@ -45,6 +45,36 @@ namespace ECommerce1.Controllers
             if (order == null) return NotFound("Không tìm thấy đơn hàng");
             if (order.OrderStatusId != 1) return BadRequest("Đơn hàng này không ở trạng thái chờ thanh toán.");
 
+            // Hỗ trợ lưu log giao dịch COD trong Nhật ký giao dịch thanh toá 
+            //if (provider.Equals("cod", StringComparison.OrdinalIgnoreCase))
+            //{
+            //    try
+            //    {
+            //        var payment = new Payment
+            //        {
+            //            OrderId = order.Id,
+            //            UserId = userId,
+            //            Provider = "cod",
+            //            ProviderSessionId = $"COD-{Guid.NewGuid()}",
+            //            ProviderTransactionId = $"COD-{DateTime.UtcNow.Ticks}",
+            //            Amount = order.TotalPrice,
+            //            Currency = "vnd",
+            //            Status = "pending",
+            //            CreatedAt = DateTime.UtcNow,
+            //            UpdatedAt = DateTime.UtcNow
+            //        };
+
+            //        _context.Payments.Add(payment);
+            //        await _context.SaveChangesAsync();
+
+            //        return Ok(new { url = "" });
+            //    }
+            //    catch (Exception ex)
+            //    {
+            //        return BadRequest(new { message = ex.Message });
+            //    }
+            //}
+
             var paymentProvider = _paymentProviders.FirstOrDefault(p => p.ProviderName.Equals(provider, StringComparison.OrdinalIgnoreCase));
             if (paymentProvider == null) return BadRequest($"Phương thức thanh toán '{provider}' không được hỗ trợ.");
 
