@@ -109,6 +109,35 @@ namespace ECommerce1.Services
 
             _context.ProductVariants.Add(newVariant);
             await _context.SaveChangesAsync();
+
+            // Tự động sinh Phiếu nhập kho ban đầu (Xử lý ngầm) nếu tồn kho biến thể > 0
+            if (newVariant.TotalStock > 0)
+            {
+                var initTx = new InventoryTransaction
+                {
+                    VariantId = newVariant.Id,
+                    QuantityChanged = newVariant.TotalStock,
+                    TransactionType = "IMPORT",
+                    Price = newVariant.Price,
+                    Note = "Khởi tạo tồn kho ban đầu",
+                    IsReverted = false,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _context.InventoryTransactions.Add(initTx);
+                await _context.SaveChangesAsync();
+
+                var auditLog = new AuditLog
+                {
+                    Action = "IMPORT",
+                    TargetTable = "InventoryTransactions",
+                    TargetId = initTx.Id.ToString(),
+                    NewValues = $"Khởi tạo tồn kho ban đầu: +{newVariant.TotalStock} cho biến thể '{newVariant.Name}' (SKU: {newVariant.Sku})",
+                    Timestamp = DateTime.UtcNow
+                };
+                _context.AuditLogs.Add(auditLog);
+                await _context.SaveChangesAsync();
+            }
+
             await SyncParentProductStockAsync(request.ProductId);
         }
 
@@ -354,6 +383,32 @@ namespace ECommerce1.Services
                         IsActive = request.IsActive
                     };
                     _context.ProductVariants.Add(newV);
+                    await _context.SaveChangesAsync();
+
+                    if (newV.TotalStock > 0)
+                    {
+                        var initTx = new InventoryTransaction
+                        {
+                            VariantId = newV.Id,
+                            QuantityChanged = newV.TotalStock,
+                            TransactionType = "IMPORT",
+                            Price = newV.Price,
+                            Note = "Khởi tạo tồn kho ban đầu",
+                            IsReverted = false,
+                            CreatedAt = DateTime.UtcNow
+                        };
+                        _context.InventoryTransactions.Add(initTx);
+
+                        var auditLog = new AuditLog
+                        {
+                            Action = "IMPORT",
+                            TargetTable = "InventoryTransactions",
+                            TargetId = initTx.Id.ToString(),
+                            NewValues = $"Khởi tạo tồn kho ban đầu: +{newV.TotalStock} cho biến thể '{newV.Name}' (SKU: {newV.Sku})",
+                            Timestamp = DateTime.UtcNow
+                        };
+                        _context.AuditLogs.Add(auditLog);
+                    }
                 }
             }
 
