@@ -179,6 +179,54 @@ namespace ECommerce1.Services
             _context.Products.Add(newProduct);
             await _context.SaveChangesAsync();
 
+            // Tự động sinh Phiếu nhập kho ban đầu (Xử lý ngầm) nếu tồn kho > 0
+            if (newProduct.TotalStock > 0)
+            {
+                // Kiểm tra/Tạo biến thể mặc định để gắn transaction kho
+                var defaultVariant = new ProductVariant
+                {
+                    ProductId = newProduct.Id,
+                    Name = "Mặc định",
+                    Sku = $"{newProduct.ProductCode}-STD",
+                    Price = newProduct.BasePrice,
+                    TotalStock = newProduct.TotalStock,
+                    ReservedStock = 0,
+                    Attributes = "{\"Màu sắc\": \"Mặc định\"}",
+                    ImageId = newProduct.ThumbnailImage ?? "",
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                _context.ProductVariants.Add(defaultVariant);
+                await _context.SaveChangesAsync();
+
+                // Tạo bản ghi Phiếu nhập kho ban đầu
+                var initTx = new InventoryTransaction
+                {
+                    VariantId = defaultVariant.Id,
+                    QuantityChanged = newProduct.TotalStock,
+                    TransactionType = "IMPORT",
+                    Price = newProduct.BasePrice,
+                    Note = "Khởi tạo tồn kho ban đầu",
+                    IsReverted = false,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _context.InventoryTransactions.Add(initTx);
+                await _context.SaveChangesAsync();
+
+                // Lưu vết AuditLog
+                var auditLog = new AuditLog
+                {
+                    Action = "IMPORT",
+                    TargetTable = "InventoryTransactions",
+                    TargetId = initTx.Id.ToString(),
+                    NewValues = $"Khởi tạo tồn kho ban đầu: +{newProduct.TotalStock} sản phẩm cho '{newProduct.Name}'",
+                    Timestamp = DateTime.UtcNow
+                };
+                _context.AuditLogs.Add(auditLog);
+                await _context.SaveChangesAsync();
+            }
+
             return newProduct.Id;
         }
 
