@@ -27,9 +27,15 @@ namespace ECommerce.Models
         public string MetaDescription { get; set; }
         public string? SpecsTemplate { get; set; }
 
+        // TỰ LIÊN KẾT (SELF-REFERENCING): Thiết lập mối quan hệ cha-con trong cùng một bảng Categories
+        // ParentId lưu trữ Id của danh mục cha. Nếu ParentId = null, đây là danh mục gốc (Cấp 1).
         public int? ParentId { get; set; }
+
         [ForeignKey("ParentId")]
+        // Đối tượng danh mục cha tương ứng (Bên "1" của quan hệ)
         public virtual Category ParentCategory { get; set; }
+
+        // Danh sách các danh mục con trực thuộc (Bên "Nhiều" của quan hệ)
         public virtual ICollection<Category> SubCategories { get; set; }
 
         public virtual ICollection<Product> Products { get; set; }
