@@ -19,10 +19,16 @@ namespace ECommerce.Models
         [ForeignKey("VariantId")]
         public virtual ProductVariant ProductVariant { get; set; }
 
-        public int? AppliedComboId { get; set; }
-        [ForeignKey("AppliedComboId")]
-        public virtual ProductCombo? AppliedCombo { get; set; }
+        public int? AppliedCampaignId { get; set; }
+        [ForeignKey("AppliedCampaignId")]
+        public virtual PromotionCampaign? AppliedCampaign { get; set; }
 
-        public decimal ComboDiscountAmount { get; set; } = 0;
+        public decimal CampaignDiscountAmount { get; set; } = 0;
+
+        public int? ParentOrderItemId { get; set; }
+        [ForeignKey("ParentOrderItemId")]
+        public virtual OrderItem? ParentOrderItem { get; set; }
+
+        public bool IsAddon { get; set; } = false;
     }
 }

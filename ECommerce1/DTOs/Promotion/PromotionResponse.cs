@@ -13,5 +13,8 @@ namespace ECommerce1.DTOs.Promotion
         public bool IsActive { get; set; }
         public int UsageLimit { get; set; }
         public int UsedCount { get; set; }
+        public decimal? MinOrderAmount { get; set; }
+        public decimal? MaxDiscountAmount { get; set; }
+        public int? MaxPerUser { get; set; }
     }
 }

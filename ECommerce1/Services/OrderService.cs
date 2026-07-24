@@ -125,6 +125,7 @@ namespace ECommerce1.Services
                 var cart = await _context.Carts
                     .Include(c => c.CartItems)
                         .ThenInclude(ci => ci.ProductVariant)
+                            .ThenInclude(pv => pv.Product)
                     .FirstOrDefaultAsync(c => c.UserId == userId);
 
                 if (cart == null || cart.CartItems == null || !cart.CartItems.Any())
@@ -146,30 +147,93 @@ namespace ECommerce1.Services
                 {
                     decimal price = item.ProductVariant.Price;
 
-                    if (item.AppliedComboId.HasValue)
+                    if (item.AppliedCampaignId.HasValue && item.IsAddon)
                     {
-                        int comboId = item.AppliedComboId.Value;
-                        var comboConfig = await _context.ProductComboItems.Where(c => c.ProductComboId == comboId).ToListAsync();
-                        var mainProductIds = comboConfig.Where(c => c.IsMain).Select(c => c.ProductId).ToList();
-                        bool hasMain = cartItemsList.Any(ci => ci.AppliedComboId == comboId && mainProductIds.Contains(ci.ProductVariant.ProductId));
+                        var campaign = await _context.PromotionCampaigns
+                            .Include(c => c.MainProductRules)
+                            .FirstOrDefaultAsync(c => c.Id == item.AppliedCampaignId.Value && c.IsActive && c.StartDate <= DateTime.UtcNow && c.EndDate >= DateTime.UtcNow);
 
-                        if (hasMain)
+                        if (campaign != null)
                         {
-                            var config = comboConfig.FirstOrDefault(c => c.ProductId == item.ProductVariant.ProductId);
-                            if (config != null && !config.IsMain)
+                            // Tìm sản phẩm chính trong giỏ hàng
+                            CartItem parentItem = null;
+                            if (item.ParentCartItemId.HasValue)
                             {
-                                if (config.DiscountType == "Percentage")
-                                    price = price * (1 - config.DiscountValue / 100);
-                                else if (config.DiscountType == "FixedAmount")
-                                    price = Math.Max(0, price - config.DiscountValue);
+                                parentItem = cartItemsList.FirstOrDefault(ci => ci.Id == item.ParentCartItemId && !ci.IsAddon);
+                            }
+                            
+                            if (parentItem == null)
+                            {
+                                // Tự động tìm sản phẩm chính thỏa mãn điều kiện chiến dịch (Logic AND trong dòng, OR giữa các dòng)
+                                foreach (var ci in cartItemsList.Where(ci => !ci.IsAddon))
+                                {
+                                    if (campaign.MainProductRules == null || !campaign.MainProductRules.Any())
+                                    {
+                                        parentItem = ci;
+                                        break;
+                                    }
+
+                                    var ancestorCatIds = await GetAncestorCategoryIds(ci.ProductVariant.Product.CategoryId);
+                                    foreach (var rule in campaign.MainProductRules)
+                                    {
+                                        bool matchesRule = true;
+                                        if (rule.ProductId.HasValue && rule.ProductId.Value != ci.ProductVariant.ProductId)
+                                            matchesRule = false;
+                                        if (matchesRule && rule.CategoryId.HasValue && !ancestorCatIds.Contains(rule.CategoryId.Value))
+                                            matchesRule = false;
+                                        if (matchesRule && rule.BrandId.HasValue && rule.BrandId.Value != ci.ProductVariant.Product.BrandId)
+                                            matchesRule = false;
+
+                                        if (matchesRule)
+                                        {
+                                            parentItem = ci;
+                                            break;
+                                        }
+                                    }
+
+                                    if (parentItem != null) break;
+                                }
+                            }
+
+                            if (parentItem != null)
+                            {
+                                item.ParentCartItemId = parentItem.Id; // Cập nhật liên kết
+
+                                // Ràng buộc số lượng sản phẩm phụ theo tỷ lệ sản phẩm chính
+                                int allowedMaxQty = parentItem.Quantity * campaign.MaxQuantityAllowed;
+                                if (item.Quantity > allowedMaxQty)
+                                {
+                                    string pName = item.ProductVariant?.Product?.Name ?? item.ProductVariant?.Name ?? "Sản phẩm";
+                                    throw new ArgumentException($"Sản phẩm phụ '{pName}' vượt quá số lượng mua kèm cho phép ({allowedMaxQty} sản phẩm cho {parentItem.Quantity} sản phẩm chính).");
+                                }
+
+                                if (campaign.DiscountType == "Percentage")
+                                {
+                                    decimal calculatedDiscount = price * (campaign.DiscountValue / 100m);
+                                    if (campaign.MaxDiscountAmount.HasValue && calculatedDiscount > campaign.MaxDiscountAmount.Value)
+                                    {
+                                        calculatedDiscount = campaign.MaxDiscountAmount.Value;
+                                    }
+                                    price = Math.Max(0, price - calculatedDiscount);
+                                }
+                                else if (campaign.DiscountType == "FixedAmount")
+                                {
+                                    price = Math.Max(0, price - campaign.DiscountValue);
+                                }
+                                else if (campaign.DiscountType == "FixedPrice")
+                                {
+                                    price = campaign.DiscountValue;
+                                }
+                            }
+                            else
+                            {
+                                // Không có sản phẩm chính tương ứng -> Hủy khuyến mãi
+                                item.AppliedCampaignId = null;
+                                item.ParentCartItemId = null;
+                                item.IsAddon = false;
                             }
                         }
-                        else
-                        {
-                            item.AppliedComboId = null;
-                        }
                     }
-
                     calculatedPrices[item.Id] = price;
                     subTotal += price * item.Quantity;
                 }
@@ -189,10 +253,14 @@ namespace ECommerce1.Services
                     if (DateTime.UtcNow < appliedPromotion.StartDate || DateTime.UtcNow > appliedPromotion.EndDate)
                         throw new ArgumentException("Mã giảm giá đã hết hạn hoặc chưa tới thời gian sử dụng.");
 
-                    // Kiểm tra User đã dùng mã này bao giờ chưa 
-                    bool hasUsed = await _context.PromotionUsages.AnyAsync(pu => pu.PromotionId == appliedPromotion.Id && pu.UserId == userId);
-                    if (hasUsed)
-                        throw new ArgumentException("Bạn đã sử dụng mã giảm giá này rồi.");
+                    if (appliedPromotion.MinOrderAmount.HasValue && subTotal < appliedPromotion.MinOrderAmount.Value)
+                        throw new ArgumentException($"Đơn hàng chưa đạt giá trị tối thiểu {appliedPromotion.MinOrderAmount.Value:N0}đ để áp dụng mã này.");
+
+                    // Kiểm tra User đã dùng mã này bao nhiêu lần 
+                    int maxAllowed = appliedPromotion.MaxPerUser.HasValue && appliedPromotion.MaxPerUser.Value > 0 ? appliedPromotion.MaxPerUser.Value : 1;
+                    int userUsageCount = await _context.PromotionUsages.CountAsync(pu => pu.PromotionId == appliedPromotion.Id && pu.UserId == userId);
+                    if (userUsageCount >= maxAllowed)
+                        throw new ArgumentException($"Bạn đã sử dụng mã giảm giá này tối đa {maxAllowed} lần cho phép.");
 
                     // Kiểm tra giới hạn số lượng mã đã phát hành
                     if (appliedPromotion.UsageLimit > 0 && appliedPromotion.UsedCount >= appliedPromotion.UsageLimit)
@@ -201,6 +269,10 @@ namespace ECommerce1.Services
                     if (appliedPromotion.DiscountType.ToUpper() == "PERCENTAGE")
                     {
                         discountValue = subTotal * (appliedPromotion.DiscountValue / 100);
+                        if (appliedPromotion.MaxDiscountAmount.HasValue && discountValue > appliedPromotion.MaxDiscountAmount.Value)
+                        {
+                            discountValue = appliedPromotion.MaxDiscountAmount.Value;
+                        }
                     }
                     else if (appliedPromotion.DiscountType.ToUpper() == "FIXED_AMOUNT")
                     {
@@ -353,6 +425,7 @@ namespace ECommerce1.Services
                 await _context.SaveChangesAsync(); // Lưu để lấy Order.Id
 
                 // 7. Tạo OrderItems và trừ Tồn kho giữ chỗ (ReservedStock)
+                var orderItemMap = new System.Collections.Generic.Dictionary<int, OrderItem>(); // CartItemId -> OrderItem
                 foreach (var item in cart.CartItems)
                 {
                     decimal finalItemPrice = calculatedPrices.ContainsKey(item.Id) ? calculatedPrices[item.Id] : item.ProductVariant.Price;
@@ -364,13 +437,25 @@ namespace ECommerce1.Services
                         VariantId = item.VariantId,
                         Quantity = item.Quantity,
                         PriceAtPurchase = finalItemPrice,
-                        AppliedComboId = item.AppliedComboId,
-                        ComboDiscountAmount = comboDiscountAmt
+                        AppliedCampaignId = item.AppliedCampaignId,
+                        CampaignDiscountAmount = comboDiscountAmt,
+                        IsAddon = item.IsAddon
+                        // ParentOrderItemId sẽ map ở bước sau
                     };
                     _context.OrderItems.Add(orderItem);
+                    orderItemMap[item.Id] = orderItem;
 
                     // Quan trọng: Tăng ReservedStock lên để giữ hàng cho khách này
                     item.ProductVariant.ReservedStock += item.Quantity;
+                }
+
+                // Cập nhật ParentOrderItemId
+                foreach (var item in cart.CartItems)
+                {
+                    if (item.IsAddon && item.ParentCartItemId.HasValue && orderItemMap.ContainsKey(item.ParentCartItemId.Value))
+                    {
+                        orderItemMap[item.Id].ParentOrderItem = orderItemMap[item.ParentCartItemId.Value];
+                    }
                 }
 
                 // 8. Lưu lịch sử dùng mã giảm giá
@@ -746,6 +831,20 @@ namespace ECommerce1.Services
                     PriceAtPurchase = oi.PriceAtPurchase
                 }).ToList()
             };
+        }
+
+        private async Task<HashSet<int>> GetAncestorCategoryIds(int categoryId)
+        {
+            var result = new HashSet<int> { categoryId };
+            var current = await _context.Categories.FindAsync(categoryId);
+
+            while (current?.ParentId != null)
+            {
+                result.Add(current.ParentId.Value);
+                current = await _context.Categories.FindAsync(current.ParentId.Value);
+            }
+
+            return result;
         }
     }
 }

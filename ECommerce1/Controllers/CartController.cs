@@ -62,34 +62,54 @@ namespace ECommerce1.Controllers
             {
                 decimal price = item.ProductVariant?.Price ?? 0;
 
-                if (item.AppliedComboId.HasValue)
+                // Tính giá Campaign discount nếu đây là phụ kiện mua kèm
+                if (item.AppliedCampaignId.HasValue && item.IsAddon)
                 {
-                    int comboId = item.AppliedComboId.Value;
-                    // Lấy cấu hình combo
-                    var comboConfig = await _context.ProductComboItems.Where(c => c.ProductComboId == comboId).ToListAsync();
+                    var campaign = await _context.PromotionCampaigns
+                        .Include(c => c.MainProductRules)
+                        .FirstOrDefaultAsync(c => c.Id == item.AppliedCampaignId.Value && c.IsActive && c.StartDate <= DateTime.UtcNow && c.EndDate >= DateTime.UtcNow);
 
-                    var mainProductIds = comboConfig.Where(c => c.IsMain).Select(c => c.ProductId).ToList();
-
-                    // Check if cart has main product for this combo
-                    bool hasMain = items.Any(ci => ci.AppliedComboId == comboId && ci.ProductVariant != null && mainProductIds.Contains(ci.ProductVariant.ProductId));
-
-                    if (hasMain)
+                    if (campaign != null)
                     {
-                        var config = comboConfig.FirstOrDefault(c => c.ProductId == item.ProductVariant?.ProductId);
-                        if (config != null && !config.IsMain)
+                        CartItem? parentItem = null;
+                        if (item.ParentCartItemId.HasValue)
                         {
-                            if (config.DiscountType == "Percentage")
-                                price = price * (1 - config.DiscountValue / 100);
-                            else if (config.DiscountType == "FixedAmount")
-                                price = Math.Max(0, price - config.DiscountValue);
+                            parentItem = items.FirstOrDefault(ci => ci.Id == item.ParentCartItemId && !ci.IsAddon);
                         }
-                    }
-                    else
-                    {
-                        // Không có sản phẩm chính -> Hủy combo
-                        item.AppliedComboId = null;
-                        _context.CartItems.Update(item);
-                        dbChanged = true;
+                        
+                        if (parentItem == null)
+                        {
+                            parentItem = items.FirstOrDefault(ci => 
+                                !ci.IsAddon && 
+                                (campaign.MainProductRules == null || !campaign.MainProductRules.Any() || 
+                                 campaign.MainProductRules.Any(r => 
+                                    (r.ProductId.HasValue && r.ProductId == ci.ProductVariant?.ProductId) ||
+                                    (r.CategoryId.HasValue && r.CategoryId == ci.ProductVariant?.Product?.CategoryId) ||
+                                    (r.BrandId.HasValue && r.BrandId == ci.ProductVariant?.Product?.BrandId)
+                                 ))
+                            );
+                        }
+
+                        if (parentItem != null)
+                        {
+                            if (item.ParentCartItemId != parentItem.Id)
+                            {
+                                item.ParentCartItemId = parentItem.Id;
+                                dbChanged = true;
+                            }
+
+                            if (campaign.DiscountType == "Percentage")
+                                price = price * (1 - campaign.DiscountValue / 100);
+                            else if (campaign.DiscountType == "FixedAmount")
+                                price = Math.Max(0, price - campaign.DiscountValue);
+                        }
+                        else
+                        {
+                            item.AppliedCampaignId = null;
+                            item.ParentCartItemId = null;
+                            item.IsAddon = false;
+                            dbChanged = true;
+                        }
                     }
                 }
 
@@ -97,12 +117,15 @@ namespace ECommerce1.Controllers
                 {
                     Id = item.Id,
                     VariantId = item.VariantId,
+                    ProductId = item.ProductVariant?.ProductId ?? 0,
                     ProductName = item.ProductVariant?.Product?.Name ?? "Sản phẩm đã xóa",
                     VariantName = item.ProductVariant?.Name ?? "Biến thể đã xóa",
                     ImageUrl = item.ProductVariant?.ImageId ?? item.ProductVariant?.Product?.ThumbnailImage,
                     Price = price,
                     Quantity = item.Quantity,
-                    AppliedComboId = item.AppliedComboId
+                    AppliedCampaignId = item.AppliedCampaignId,
+                    ParentCartItemId = item.ParentCartItemId,
+                    IsAddon = item.IsAddon
                 });
             }
 
@@ -188,7 +211,9 @@ namespace ECommerce1.Controllers
                         CartId = cart.Id,
                         VariantId = item.VariantId,
                         Quantity = item.Quantity,
-                        AppliedComboId = item.AppliedComboId
+                        AppliedCampaignId = item.AppliedCampaignId,
+                        ParentCartItemId = item.ParentCartItemId,
+                        IsAddon = item.IsAddon
                     };
                     _context.CartItems.Add(cartItem);
                 }
@@ -205,6 +230,8 @@ namespace ECommerce1.Controllers
     {
         public int VariantId { get; set; }
         public int Quantity { get; set; }
-        public int? AppliedComboId { get; set; }
+        public int? AppliedCampaignId { get; set; }
+        public int? ParentCartItemId { get; set; }
+        public bool IsAddon { get; set; } = false;
     }
 }

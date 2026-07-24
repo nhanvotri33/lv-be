@@ -38,6 +38,8 @@ namespace ECommerce.Models
         
         public string? Note { get; set; } // Ghi chú giao hàng từ khách hàng
 
+        public decimal AddonDiscountAmount { get; set; } = 0;
+
         // --- Ahamove Integration Fields ---
         public double? DeliveryLatitude { get; set; }
         public double? DeliveryLongitude { get; set; }
