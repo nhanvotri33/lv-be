@@ -47,9 +47,9 @@ namespace ECommerce.Models
         public DbSet<AuditLog> AuditLogs { get; set; }
         public DbSet<CategoryBrandDefault> CategoryBrandDefaults { get; set; }
         public DbSet<Banner> Banners { get; set; }
-        public DbSet<ProductCombo> ProductCombos { get; set; }
-        public DbSet<ProductComboItem> ProductComboItems { get; set; }
-
+        public DbSet<PromotionCampaign> PromotionCampaigns { get; set; }
+        public DbSet<CampaignMainProductRule> CampaignMainProductRules { get; set; }
+        public DbSet<CampaignAddonProductRule> CampaignAddonProductRules { get; set; }
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
             if (!optionsBuilder.IsConfigured)
@@ -78,18 +78,19 @@ namespace ECommerce.Models
                     .OnDelete(DeleteBehavior.Cascade);
             });
 
-            modelBuilder.Entity<ProductComboItem>(entity =>
+            modelBuilder.Entity<CampaignMainProductRule>(entity =>
             {
-                entity.HasIndex(pci => new { pci.ProductComboId, pci.ProductId }).IsUnique();
-
-                entity.HasOne(pci => pci.ProductCombo)
-                      .WithMany(pc => pc.ComboItems)
-                      .HasForeignKey(pci => pci.ProductComboId)
+                entity.HasOne(cr => cr.Campaign)
+                      .WithMany(c => c.MainProductRules)
+                      .HasForeignKey(cr => cr.CampaignId)
                       .OnDelete(DeleteBehavior.Cascade);
+            });
 
-                entity.HasOne(pci => pci.Product)
-                      .WithMany()
-                      .HasForeignKey(pci => pci.ProductId)
+            modelBuilder.Entity<CampaignAddonProductRule>(entity =>
+            {
+                entity.HasOne(cr => cr.Campaign)
+                      .WithMany(c => c.AddonProductRules)
+                      .HasForeignKey(cr => cr.CampaignId)
                       .OnDelete(DeleteBehavior.Cascade);
             });
 
@@ -116,7 +117,8 @@ namespace ECommerce.Models
             modelBuilder.Entity<ProductVariant>().Property(pv => pv.Price).HasColumnType("decimal(18,2)");
             modelBuilder.Entity<Order>().Property(o => o.TotalPrice).HasColumnType("decimal(18,2)");
             modelBuilder.Entity<OrderItem>().Property(oi => oi.PriceAtPurchase).HasColumnType("decimal(18,2)");
-            modelBuilder.Entity<OrderItem>().Property(oi => oi.ComboDiscountAmount).HasColumnType("decimal(18,2)");
+            modelBuilder.Entity<OrderItem>().Property(oi => oi.CampaignDiscountAmount).HasColumnType("decimal(18,2)");
+            modelBuilder.Entity<Order>().Property(o => o.AddonDiscountAmount).HasColumnType("decimal(18,2)");
             modelBuilder.Entity<Promotion>().Property(p => p.DiscountValue).HasColumnType("decimal(18,2)");
             modelBuilder.Entity<Payment>().Property(p => p.Amount).HasColumnType("decimal(18,2)");
             modelBuilder.Entity<Stock>().Property(id => id.Price).HasColumnType("decimal(18,2)");

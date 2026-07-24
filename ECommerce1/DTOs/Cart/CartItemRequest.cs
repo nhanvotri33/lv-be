@@ -4,6 +4,8 @@ namespace ECommerce1.DTOs.Cart
     {
         public int VariantId { get; set; }
         public int Quantity { get; set; }
-        public int? AppliedComboId { get; set; }
+        public int? AppliedCampaignId { get; set; }
+        public int? ParentCartItemId { get; set; }
+        public bool IsAddon { get; set; } = false;
     }
 }

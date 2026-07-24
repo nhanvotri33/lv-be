@@ -54,7 +54,10 @@ namespace ECommerce1.Controllers
                 IsActive = p.IsActive,
                 // Bảo mật dữ liệu: User thường không cần biết chính xác mình có bao nhiêu mã và đã xài bao nhiêu
                 UsageLimit = isAdmin ? p.UsageLimit : 0,
-                UsedCount = isAdmin ? p.UsedCount : 0
+                UsedCount = isAdmin ? p.UsedCount : 0,
+                MinOrderAmount = p.MinOrderAmount,
+                MaxDiscountAmount = p.MaxDiscountAmount,
+                MaxPerUser = p.MaxPerUser
             }).ToList();
 
             return Ok(response);
@@ -77,7 +80,10 @@ namespace ECommerce1.Controllers
                 EndDate = request.EndDate,
                 IsActive = request.IsActive,
                 UsageLimit = request.UsageLimit,
-                UsedCount = 0
+                UsedCount = 0,
+                MinOrderAmount = request.MinOrderAmount,
+                MaxDiscountAmount = request.MaxDiscountAmount,
+                MaxPerUser = request.MaxPerUser
             };
 
             _context.Promotions.Add(newPromo);
@@ -101,6 +107,9 @@ namespace ECommerce1.Controllers
             promo.EndDate = request.EndDate;
             promo.IsActive = request.IsActive;
             promo.UsageLimit = request.UsageLimit;
+            promo.MinOrderAmount = request.MinOrderAmount;
+            promo.MaxDiscountAmount = request.MaxDiscountAmount;
+            promo.MaxPerUser = request.MaxPerUser;
 
             await _context.SaveChangesAsync();
             return Ok("Cập nhật mã khuyến mãi thành công.");
@@ -142,19 +151,27 @@ namespace ECommerce1.Controllers
             if (promo.UsageLimit > 0 && promo.UsedCount >= promo.UsageLimit)
                 return BadRequest("Mã giảm giá đã hết lượt sử dụng.");
 
-            // Kiểm tra xem User đã dùng mã này bao giờ chưa
+            if (promo.MinOrderAmount.HasValue && request.SubTotal < promo.MinOrderAmount.Value)
+                return BadRequest($"Đơn hàng chưa đạt giá trị tối thiểu {promo.MinOrderAmount.Value:N0}đ để áp dụng mã này.");
+
+            // Kiểm tra xem User đã dùng mã này bao nhiêu lần
             var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (Guid.TryParse(userIdString, out Guid userId))
             {
-                bool hasUsed = await _context.PromotionUsages.AnyAsync(pu => pu.PromotionId == promo.Id && pu.UserId == userId);
-                if (hasUsed)
-                    return BadRequest("Bạn đã sử dụng mã giảm giá này rồi.");
+                int maxAllowed = promo.MaxPerUser.HasValue && promo.MaxPerUser.Value > 0 ? promo.MaxPerUser.Value : 1;
+                int userUsageCount = await _context.PromotionUsages.CountAsync(pu => pu.PromotionId == promo.Id && pu.UserId == userId);
+                if (userUsageCount >= maxAllowed)
+                    return BadRequest($"Bạn đã sử dụng mã giảm giá này tối đa {maxAllowed} lần cho phép.");
             }
 
             decimal discountValue = 0;
             if (promo.DiscountType.ToUpper() == "PERCENTAGE")
             {
                 discountValue = request.SubTotal * (promo.DiscountValue / 100);
+                if (promo.MaxDiscountAmount.HasValue && discountValue > promo.MaxDiscountAmount.Value)
+                {
+                    discountValue = promo.MaxDiscountAmount.Value;
+                }
             }
             else if (promo.DiscountType.ToUpper() == "FIXED_AMOUNT")
             {

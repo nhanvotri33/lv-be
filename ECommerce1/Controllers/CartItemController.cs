@@ -73,7 +73,9 @@ namespace ECommerce1.Controllers
                     CartId = cart.Id,
                     VariantId = request.VariantId,
                     Quantity = request.Quantity,
-                    AppliedComboId = request.AppliedComboId
+                    AppliedCampaignId = request.AppliedCampaignId,
+                    ParentCartItemId = request.ParentCartItemId,
+                    IsAddon = request.IsAddon
                 };
                 _context.CartItems.Add(newItem);
             }

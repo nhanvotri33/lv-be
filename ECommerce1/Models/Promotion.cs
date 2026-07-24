@@ -18,6 +18,14 @@ namespace ECommerce.Models
         public int UsageLimit { get; set; } // Giới hạn số lượng mã (0 là không giới hạn)
         public int UsedCount { get; set; }  // Số lượng mã đã được sử dụng
 
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal? MinOrderAmount { get; set; }
+
+        [Column(TypeName = "decimal(18,2)")]
+        public decimal? MaxDiscountAmount { get; set; }
+
+        public int? MaxPerUser { get; set; }
+
         public virtual ICollection<Order> Orders { get; set; }
         public virtual ICollection<PromotionUsage> PromotionUsages { get; set; }
     }
