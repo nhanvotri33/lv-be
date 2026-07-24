@@ -19,9 +19,15 @@ namespace ECommerce1.Controllers
 
         // ================= READ: Ai cũng xem được =================
         [HttpGet]
-        public async Task<IActionResult> GetAll([FromQuery] bool includeInactive = false)
+        public async Task<IActionResult> GetAll(
+            [FromQuery] int? categoryId = null,
+            [FromQuery] string? brand = null,
+            [FromQuery] string? search = null,
+            [FromQuery] string? sortBy = null,
+            [FromQuery] string? sortOrder = null,
+            [FromQuery] bool includeInactive = false)
         {
-            var products = await _productService.GetAllAsync(includeInactive);
+            var products = await _productService.GetAllAsync(categoryId, brand, search, sortBy, sortOrder, includeInactive);
             return Ok(products);
         }
 

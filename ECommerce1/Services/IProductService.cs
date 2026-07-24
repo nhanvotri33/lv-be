@@ -6,7 +6,13 @@ namespace ECommerce1.Services
 {
     public interface IProductService
     {
-        Task<IEnumerable<ProductResponse>> GetAllAsync(bool includeInactive = false);
+        Task<IEnumerable<ProductResponse>> GetAllAsync(
+            int? categoryId = null,
+            string? brand = null,
+            string? search = null,
+            string? sortBy = null,
+            string? sortOrder = null,
+            bool includeInactive = false);
         Task<ProductResponse> GetByIdAsync(int id);
         Task<int> CreateAsync(ProductRequest request);
         Task UpdateAsync(int id, ProductRequest request);
