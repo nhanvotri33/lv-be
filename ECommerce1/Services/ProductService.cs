@@ -46,7 +46,37 @@ namespace ECommerce1.Services
             return validIds;
         }
 
-        public async Task<IEnumerable<ProductResponse>> GetAllAsync(bool includeInactive = false)
+        private async Task<HashSet<int>> GetCategoryDescendantsAsync(int parentId)
+        {
+            var allCats = await _context.Categories.ToListAsync();
+            var result = new HashSet<int> { parentId };
+            
+            void AddChildren(int id)
+            {
+                var children = allCats.Where(c => c.ParentId == id).ToList();
+                foreach (var child in children)
+                {
+                    if (result.Add(child.Id))
+                    {
+                        AddChildren(child.Id);
+                    }
+                }
+            }
+            
+            AddChildren(parentId);
+            return result;
+        }
+
+        /// <summary>
+        /// Lấy danh sách sản phẩm kèm lọc theo danh mục, từ khóa và sắp xếp động ở cấp độ Database
+        /// </summary>
+        public async Task<IEnumerable<ProductResponse>> GetAllAsync(
+            int? categoryId = null,
+            string? brand = null,
+            string? search = null,
+            string? sortBy = null,
+            string? sortOrder = null,
+            bool includeInactive = false)
         {
             var validCategoryIds = await GetValidCategoryIdsAsync();
 
@@ -60,6 +90,66 @@ namespace ECommerce1.Services
                 query = query.Where(p => p.IsActive != false && 
                                          validCategoryIds.Contains(p.CategoryId) &&
                                          (p.BrandId == null || p.Brand.IsActive != false));
+            }
+
+            // 1. LỌC THEO NGỮ CẢNH DANH MỤC (Category Context): Lấy cả danh mục con để tránh lẫn lộn ngành hàng
+            if (categoryId.HasValue)
+            {
+                var categoryBranchIds = await GetCategoryDescendantsAsync(categoryId.Value);
+                query = query.Where(p => categoryBranchIds.Contains(p.CategoryId));
+            }
+
+            // 1.5 Lọc theo Thương hiệu (Brand): Gộp chung Apple và iPhone
+            if (!string.IsNullOrWhiteSpace(brand))
+            {
+                var bName = brand.ToLower().Trim();
+                if (bName == "iphone" || bName == "apple")
+                {
+                    query = query.Where(p => p.Brand != null && 
+                                             (p.Brand.Name.ToLower() == "apple" || p.Brand.Name.ToLower() == "iphone"));
+                }
+                else
+                {
+                    query = query.Where(p => p.Brand != null && p.Brand.Name.ToLower() == bName);
+                }
+            }
+
+            // 2. Lọc theo từ khóa tìm kiếm
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var term = search.ToLower().Trim();
+                query = query.Where(p => p.Name.ToLower().Contains(term) || 
+                                         (p.Description != null && p.Description.ToLower().Contains(term)));
+            }
+
+            // 3. Sắp xếp động dưới Database (TGDD Style)
+            if (!string.IsNullOrWhiteSpace(sortBy))
+            {
+                bool isDesc = string.Equals(sortOrder, "desc", StringComparison.OrdinalIgnoreCase);
+                switch (sortBy.ToLower())
+                {
+                    case "price":
+                        query = isDesc ? query.OrderByDescending(p => p.BasePrice) : query.OrderBy(p => p.BasePrice);
+                        break;
+                    case "featured":
+                        query = isDesc 
+                            ? query.OrderByDescending(p => p.IsFeatured).ThenByDescending(p => p.Id)
+                            : query.OrderByDescending(p => p.IsFeatured).ThenBy(p => p.Id);
+                        break;
+                    case "newest":
+                        query = isDesc ? query.OrderByDescending(p => p.Id) : query.OrderBy(p => p.Id);
+                        break;
+                    case "discount":
+                        query = isDesc 
+                            ? query.OrderByDescending(p => p.OriginalPrice - p.BasePrice)
+                            : query.OrderBy(p => p.OriginalPrice - p.BasePrice);
+                        break;
+                    case "best_seller":
+                        query = isDesc 
+                            ? query.OrderByDescending(p => p.Reviews.Count(r => !r.IsHidden))
+                            : query.OrderBy(p => p.Reviews.Count(r => !r.IsHidden));
+                        break;
+                }
             }
 
             var productsList = await query.ToListAsync();

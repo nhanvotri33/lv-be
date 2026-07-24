@@ -38,7 +38,7 @@ namespace ECommerce1.Services
                     Price = pv.Price,
                     TotalStock = pv.TotalStock,
                     ReservedStock = pv.ReservedStock,
-                    AvailableStock = pv.AvailableStock,
+                    AvailableStock = pv.TotalStock - pv.ReservedStock,
                     CreatedAt = pv.CreatedAt,
                     UpdatedAt = pv.UpdatedAt,
                     ProductId = pv.ProductId,
