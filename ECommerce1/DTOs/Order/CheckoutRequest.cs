@@ -18,5 +18,6 @@ namespace ECommerce1.DTOs.Order
         public int PointsToRedeem { get; set; } = 0;
         public string? Note { get; set; } // Ghi chú giao hàng
         public string? ShippingCarrier { get; set; } // Ahamove Siêu Tốc, Giao Hàng Tiêu Chuẩn, v.v.
+        public string? Email { get; set; } // Email nhận thông tin đơn hàng tùy chọn
     }
 }

@@ -185,6 +185,7 @@ namespace ECommerce1.Controllers
             // Xử lý lưu lô hàng vào Stock
             if (actualQtyChange > 0)
             {
+                // THÊM HÀNG: Tạo mới lô hàng nhập (QuantityRemaining = Số lượng nhập mới)
                 var newDetail = new Stock
                 {
                     ProductId = variant.ProductId,
@@ -201,27 +202,28 @@ namespace ECommerce1.Controllers
             }
             else if (actualQtyChange < 0)
             {
+                // TRỪ HÀNG (FIFO): Lấy các lô hàng sắp xếp theo ngày nhập cũ nhất để trừ dần số lượng còn lại của từng lô (QuantityRemaining)
                 int qtyToDeduct = Math.Abs(actualQtyChange);
                 var availableLots = await _context.Stocks
                     .Where(d => d.ProductId == variant.ProductId && d.QuantityRemaining > 0)
                     .OrderBy(d => d.ReceivedDate)
                     .ToListAsync();
 
-                foreach (var lot in availableLots)
-                {
-                    if (qtyToDeduct <= 0) break;
-                    if (lot.QuantityRemaining >= qtyToDeduct)
-                    {
-                        lot.QuantityRemaining -= qtyToDeduct;
-                        qtyToDeduct = 0;
-                    }
-                    else
-                    {
-                        qtyToDeduct -= lot.QuantityRemaining;
-                        lot.QuantityRemaining = 0;
-                    }
-                }
-                await _context.SaveChangesAsync();
+                 foreach (var lot in availableLots)
+                 {
+                     if (qtyToDeduct <= 0) break;
+                     if (lot.QuantityRemaining >= qtyToDeduct)
+                     {
+                         lot.QuantityRemaining -= qtyToDeduct;
+                         qtyToDeduct = 0;
+                     }
+                     else
+                     {
+                         qtyToDeduct -= lot.QuantityRemaining;
+                         lot.QuantityRemaining = 0;
+                     }
+                 }
+                 await _context.SaveChangesAsync();
             }
 
             // Cập nhật tồn kho tổng ở Product atomically từ tổng các biến thể để tránh race condition

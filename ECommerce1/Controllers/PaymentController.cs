@@ -113,6 +113,11 @@ namespace ECommerce1.Controllers
                 // Trả về URL thanh toán tương ứng cho từng cổng thanh toán
                 if (provider.Equals("stripe", StringComparison.OrdinalIgnoreCase))
                 {
+                    if (sessionId.StartsWith("mock_stripe_session_"))
+                    {
+                        var mockRedirectUrl = successUrl.Replace("{CHECKOUT_SESSION_ID}", sessionId);
+                        return Ok(new { url = mockRedirectUrl });
+                    }
                     var service = new Stripe.Checkout.SessionService();
                     var sessionInfo = await service.GetAsync(sessionId);
                     return Ok(new { url = sessionInfo.Url });
