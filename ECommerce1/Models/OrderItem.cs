@@ -25,6 +25,7 @@ namespace ECommerce.Models
 
         public decimal CampaignDiscountAmount { get; set; } = 0;
 
+        // TỰ LIÊN KẾT: Lưu ID dòng hóa đơn của sản phẩm chính đi kèm để phục vụ thống kê báo cáo combo / hoàn trả
         public int? ParentOrderItemId { get; set; }
         [ForeignKey("ParentOrderItemId")]
         public virtual OrderItem? ParentOrderItem { get; set; }

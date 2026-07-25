@@ -15,13 +15,24 @@ namespace ECommerce1.Services.Payment
         public StripePaymentProvider(IConfiguration configuration)
         {
             _configuration = configuration;
-            Stripe.StripeConfiguration.ApiKey = _configuration["Stripe:SecretKey"];
+            var apiKey = _configuration["Stripe:SecretKey"];
+            if (!string.IsNullOrEmpty(apiKey))
+            {
+                Stripe.StripeConfiguration.ApiKey = apiKey;
+            }
         }
 
         public string ProviderName => "stripe";
 
         public async Task<string> CreateCheckoutSessionAsync(Order order, string successUrl, string cancelUrl)
         {
+            var apiKey = _configuration["Stripe:SecretKey"];
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                // Chế độ giả lập khi chưa cấu hình Stripe API Key
+                return "mock_stripe_session_" + Guid.NewGuid().ToString().Substring(0, 8);
+            }
+
             // Trích xuất danh sách sản phẩm hiển thị trong mô tả của Stripe Checkout
             var productNamesList = order.OrderItems != null 
                 ? string.Join(", ", order.OrderItems.Select(i => $"{i.ProductVariant?.Product?.Name ?? "Sản phẩm"} (x{i.Quantity})"))
@@ -59,6 +70,16 @@ namespace ECommerce1.Services.Payment
 
         public async Task<PaymentVerificationResult> VerifySessionAsync(string sessionId)
         {
+            if (sessionId.StartsWith("mock_stripe_session_"))
+            {
+                return new PaymentVerificationResult
+                {
+                    IsSuccess = true,
+                    TransactionId = "mock_stripe_trans_" + Guid.NewGuid().ToString().Substring(0, 8),
+                    Message = "Thanh toán Stripe giả lập thành công (Chưa cấu hình API Key)"
+                };
+            }
+
             var service = new SessionService();
             Session session = await service.GetAsync(sessionId);
 

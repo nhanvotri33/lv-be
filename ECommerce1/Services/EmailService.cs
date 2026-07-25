@@ -27,8 +27,11 @@ namespace ECommerce1.Services
             var password = emailConfig["Password"];
             var fromEmail = emailConfig["FromEmail"];
 
-            // Trong môi trường dev, nếu chưa cấu hình EmailSettings, ta sẽ log ra Console
-            if (string.IsNullOrEmpty(host) || string.IsNullOrEmpty(username))
+            // Trong môi trường dev, nếu chưa cấu hình EmailSettings hoặc vẫn là placeholder,thì log ra Console
+            if (string.IsNullOrEmpty(host) || 
+                string.IsNullOrEmpty(username) || 
+                username == "YOUR_GMAIL_USERNAME" || 
+                !username.Contains("@"))
             {
                 _logger.LogWarning($"[MOCK EMAIL] To: {toEmail} | Subject: {subject}\n{htmlMessage}");
                 return;
@@ -49,6 +52,8 @@ namespace ECommerce1.Services
                         Subject = subject,
                         Body = htmlMessage,
                         IsBodyHtml = true,
+                        BodyEncoding = System.Text.Encoding.UTF8,
+                        SubjectEncoding = System.Text.Encoding.UTF8
                     };
                     mailMessage.To.Add(toEmail);
 

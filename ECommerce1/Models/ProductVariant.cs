@@ -15,6 +15,7 @@ namespace ECommerce.Models
         public int TotalStock { get; set; }
         public int ReservedStock { get; set; }
         
+        // FE dùng AvailableStock để hiển thị hàng còn; BE dùng để check tồn thực tế khi checkout và giữ chỗ qua ReservedStock.
         [NotMapped]
         public int AvailableStock => TotalStock - ReservedStock;
 

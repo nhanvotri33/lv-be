@@ -22,6 +22,7 @@ namespace ECommerce.Models
         [ForeignKey("AppliedCampaignId")]
         public virtual PromotionCampaign? AppliedCampaign { get; set; }
 
+        // TỰ LIÊN KẾT: Lưu ID dòng giỏ hàng của sản phẩm chính để bảo hộ ưu đãi cho sản phẩm phụ mua kèm
         public int? ParentCartItemId { get; set; }
         [ForeignKey("ParentCartItemId")]
         public virtual CartItem? ParentCartItem { get; set; }

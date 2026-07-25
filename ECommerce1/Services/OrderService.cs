@@ -13,14 +13,17 @@ namespace ECommerce1.Services
         private readonly ApplicationDbContext _context;
         private readonly IEnumerable<ECommerce1.Services.Payment.IPaymentProvider> _paymentProviders;
         private readonly IAhamoveService _ahamoveService;
+        private readonly IEmailService _emailService;
 
         public OrderService(ApplicationDbContext context, 
             IEnumerable<ECommerce1.Services.Payment.IPaymentProvider> paymentProviders,
-            IAhamoveService ahamoveService)
+            IAhamoveService ahamoveService,
+            IEmailService emailService)
         {
             _context = context;
             _paymentProviders = paymentProviders;
             _ahamoveService = ahamoveService;
+            _emailService = emailService;
         }
 
         public async Task<IEnumerable<OrderResponse>> GetMyOrdersAsync(Guid userId)
@@ -116,6 +119,17 @@ namespace ECommerce1.Services
                 .ToListAsync();
         }
 
+        /// <summary>
+        /// LUỒNG HOẠT ĐỘNG ĐẶT HÀNG (CHECKOUT) VÀ MUA KÈM PHỤ KIỆN:
+        /// 1. Mở Transaction Serializable tránh bán đè khi cùng tranh chấp tồn kho.
+        /// 2. Check AvailableStock (TotalStock - ReservedStock). Nếu thiếu sẽ báo lỗi ngay.
+        /// 3. Khuyến mãi mua kèm (Self-Reference ParentCartItemId):
+        ///    - Phụ kiện (IsAddon = true) chỉ giảm nếu có Máy chính trong giỏ hàng (ParentCartItemId != null).
+        ///    - Giới hạn số lượng mua kèm: Qty Phụ kiện <= Qty Máy chính * MaxQuantityAllowed.
+        ///    - Giảm giá cố định theo campaign, không cộng dồn lũy tiến khi mua nhiều phụ kiện.
+        /// 4. Tạo Order & OrderItems (Lưu ParentOrderItemId để giữ liên kết combo).
+        /// 5. Tăng ReservedStock để giữ hàng tạm thời. Xóa CartItems và Commit.
+        /// </summary>
         public async Task<object> CheckoutAsync(Guid userId, CheckoutRequest request)
         {
             using var transaction = await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
@@ -481,6 +495,66 @@ namespace ECommerce1.Services
 
                 await transaction.CommitAsync();
 
+                // GỬI EMAIL XÁC NHẬN ĐƠN HÀNG
+                try
+                {
+                    string recipientEmail = !string.IsNullOrWhiteSpace(request.Email) ? request.Email.Trim() : user.Email;
+
+                    if (!string.IsNullOrWhiteSpace(recipientEmail))
+                    {
+                        string itemsHtml = "";
+                        foreach (var item in cartItemsList)
+                        {
+                            string prodName = item.ProductVariant?.Product?.Name ?? "Sản phẩm";
+                            string variantName = item.ProductVariant?.Name ?? "Mặc định";
+                            decimal price = calculatedPrices.ContainsKey(item.Id) ? calculatedPrices[item.Id] : item.ProductVariant.Price;
+
+                            itemsHtml += $@"
+                                <tr>
+                                    <td style='padding: 8px; border: 1px solid #ddd;'>{prodName} ({variantName})</td>
+                                    <td style='padding: 8px; border: 1px solid #ddd; text-align: center;'>{item.Quantity}</td>
+                                    <td style='padding: 8px; border: 1px solid #ddd; text-align: right;'>{price:N0}đ</td>
+                                </tr>";
+                        }
+
+                        string emailBody = $@"
+                            <div style='font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 5px;'>
+                                <h2 style='color: #2b6cb0; text-align: center;'>Xác Nhận Đơn Hàng Thành Công</h2>
+                                <p>Chào <b>{receiverName}</b>,</p>
+                                <p>Cảm ơn bạn đã mua sắm tại <b>PhoneStore</b>. Đơn hàng của bạn đã được tiếp nhận thành công!</p>
+                                
+                                <h3 style='border-bottom: 2px solid #2b6cb0; padding-bottom: 5px;'>Thông tin đơn hàng #{newOrder.Id}</h3>
+                                <p><b>Người nhận:</b> {receiverName} ({receiverPhone})</p>
+                                <p><b>Địa chỉ nhận:</b> {shippingAddressLine}, {shippingWard}, {shippingProvince}</p>
+                                <p><b>Phương thức thanh toán:</b> {newOrder.PaymentMethod}</p>
+                                
+                                <table style='width: 100%; border-collapse: collapse; margin-top: 15px;'>
+                                    <thead>
+                                        <tr style='background: #f7fafc;'>
+                                            <th style='padding: 8px; border: 1px solid #ddd; text-align: left;'>Sản phẩm</th>
+                                            <th style='padding: 8px; border: 1px solid #ddd; text-align: center;'>Số lượng</th>
+                                            <th style='padding: 8px; border: 1px solid #ddd; text-align: right;'>Đơn giá</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {itemsHtml}
+                                    </tbody>
+                                </table>
+                                
+                                <h3 style='text-align: right; color: #e53e3e;'>Tổng tiền thanh toán: {finalPrice:N0}đ</h3>
+                                <hr style='border: 0; border-top: 1px solid #eee; margin: 20px 0;'/>
+                                <p style='font-size: 12px; color: #718096; text-align: center;'>Mọi thắc mắc vui lòng liên hệ hotline 1900xxxx. Xin cảm ơn quý khách!</p>
+                            </div>";
+
+                        _ = _emailService.SendEmailAsync(recipientEmail, $"[PhoneStore] Xác nhận đơn hàng #{newOrder.Id} thành công", emailBody);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[LỖI GỬI EMAIL]: {ex.Message}");
+                }
+                // ===============================================================
+
                 return new { 
                     Message = "Đặt hàng thành công!", 
                     OrderId = newOrder.Id, 
@@ -550,6 +624,13 @@ namespace ECommerce1.Services
             await _context.SaveChangesAsync();
         }
 
+        /// <summary>
+        /// LUỒNG ĐỒNG BỘ KHO KHI THAY ĐỔI TRẠNG THÁI ĐƠN HÀNG:
+        /// - Chờ duyệt (1) -> Confirmed/Shipping/Delivered (2,3,4): Trừ kho vật lý TotalStock & giải phóng ReservedStock.
+        /// - Đang giao/Duyệt (2,3) -> Hủy/Thất bại/Hoàn tiền (5,6,7): Hoàn trả kho vật lý TotalStock.
+        /// - Chờ duyệt (1) -> Hủy/Thất bại/Hoàn tiền (5,6,7): Chỉ giải phóng ReservedStock.
+        /// - Tính tổng (Sum) kho của tất cả biến thể để cập nhật đồng bộ lên bảng cha Products.
+        /// </summary>
         public async Task UpdateOrderStatusAsync(int id, int newStatusId)
         {
             var order = await _context.Orders
