@@ -305,19 +305,24 @@ namespace ECommerce1.Services
                 decimal discountFromPoints = 0;
                 decimal priceBeforePoints = subTotal - discountValue;
 
+                // [LUỒNG TRỪ ĐIỂM TIÊU DÙNG ĐỂ GIẢM GIÁ HÓA ĐƠN]:
+                // - Kiểm tra xem khách có yêu cầu quy đổi điểm để giảm giá hay không.
                 if (request.PointsToRedeem > 0)
                 {
+                    // 1. Kiểm tra ví điểm hiện có của khách hàng xem có đủ số điểm muốn đổi hay không.
                     if (user.RewardPoints < request.PointsToRedeem)
                         throw new ArgumentException("Số điểm tích lũy của bạn không đủ.");
 
                     pointsRedeemed = request.PointsToRedeem;
-                    discountFromPoints = pointsRedeemed; // 1 điểm = 1 VNĐ
+                    discountFromPoints = pointsRedeemed; // Quy đổi 1 điểm = 1 VNĐ
+                    
+                    // 2. Chặn quy đổi vượt quá tổng tiền hóa đơn cần thanh toán (tránh hóa đơn bị âm tiền).
                     if (discountFromPoints > priceBeforePoints)
                     {
                         discountFromPoints = priceBeforePoints;
-                        pointsRedeemed = (int)discountFromPoints;
+                        pointsRedeemed = (int)discountFromPoints; // Cập nhật lại số điểm bị trừ thực tế khớp với tiền hàng
                     }
-                    priceBeforePoints -= discountFromPoints;
+                    priceBeforePoints -= discountFromPoints; // Giảm trừ trực tiếp số tiền quy đổi vào hóa đơn
                 }
 
                 // 5.2. Xử lý địa chỉ giao hàng (Snapshot) & Tọa độ giao hàng
@@ -409,9 +414,15 @@ namespace ECommerce1.Services
 
                 if (pointsRedeemed > 0)
                 {
+                    // Khấu trừ trực tiếp số điểm thưởng đã quy đổi khỏi ví của khách hàng trong Database
                     user.RewardPoints -= pointsRedeemed;
                 }
 
+                // =========================================================================
+                // [TẠO ĐƠN HÀNG - BACK-END]
+                // - Mã đơn hàng (Id) là khóa chính tự tăng (IDENTITY(1,1)) trong SQL Server.
+                // - Khi gọi SaveChangesAsync(), cơ sở dữ liệu sẽ tự sinh Id cho đơn hàng này.
+                // =========================================================================
                 // 6. Tạo đơn hàng (Order)
                 var newOrder = new Order
                 {
@@ -717,7 +728,9 @@ namespace ECommerce1.Services
                 }
             }
 
-            // Xử lý cộng điểm tích lũy khi hoàn thành đơn
+            // Xử lý cộng điểm tích lũy khi hoàn thành đơn (OrderStatusId = 4 - Completed)
+            // - RewardPoints: Điểm dùng để trừ tiền mua hàng lần sau.
+            // - AccumulatedPoints: Điểm tích lũy trọn đời chỉ tăng, không giảm khi đổi quà, dùng xét Hạng thành viên (Đồng/Bạc/Vàng).
             if (newStatusId == 4 && oldStatusId != 4)
             {
                 var user = await _context.Users.FindAsync(order.UserId);
@@ -729,6 +742,9 @@ namespace ECommerce1.Services
             }
 
             // Xử lý hoàn điểm khi hủy đơn hoặc hoàn tiền
+            // TRƯỜNG HỢP 1: Đơn hàng ở trạng thái đang xử lý (1, 2, 3) bị hủy hoặc thất bại (5, 6, 7).
+            // - Đơn hàng này chưa bao giờ hoàn thành (chưa đạt trạng thái 4) nên khách chưa được cộng điểm thưởng của đơn này.
+            // - Hệ thống chỉ cần hoàn trả lại số điểm cũ mà khách đã tiêu dùng (PointsRedeemed) khi thanh toán đơn hàng này.
             if ((newStatusId == 5 || newStatusId == 6 || newStatusId == 7) && (oldStatusId == 1 || oldStatusId == 2 || oldStatusId == 3))
             {
                 var user = await _context.Users.FindAsync(order.UserId);
@@ -737,7 +753,12 @@ namespace ECommerce1.Services
                     user.RewardPoints += order.PointsRedeemed;
                 }
             }
-            // 4. Chuyển từ Completed (Đã giao) thành Refunded (Đổi trả và Hoàn tiền)
+            // TRƯỜNG HỢP 2: Đơn hàng đã giao thành công (4) nhưng sau đó bị đổi trả/hoàn tiền (7)
+            // - Vì đơn hàng đã hoàn thành trước đó nên khách đã được cộng cả điểm thưởng (RewardPoints) và điểm xét hạng (AccumulatedPoints).
+            // - Hệ thống cần:
+            //   1. Thu hồi lại số điểm thưởng mới nhận từ đơn này.
+            //   2. Thu hồi lại số điểm tích lũy xét hạng mới nhận từ đơn này.
+            //   3. Hoàn trả lại số điểm cũ mà khách đã tiêu dùng để thanh toán đơn này.
             else if (oldStatusId == 4 && newStatusId == 7)
             {
                 // Thu hồi điểm tích lũy và hoàn trả điểm đã tiêu dùng (Không hoàn lại kho tồn máy mới)

@@ -132,6 +132,8 @@ namespace ECommerce1.Services
                         query = isDesc ? query.OrderByDescending(p => p.BasePrice) : query.OrderBy(p => p.BasePrice);
                         break;
                     case "featured":
+                        // Sắp xếp nổi bật: Ưu tiên các sản phẩm được Admin tích chọn "IsFeatured" (IsFeatured = true) lên đầu, 
+                        // sau đó sắp xếp theo ID giảm dần để đưa sản phẩm mới nhất lên.
                         query = isDesc 
                             ? query.OrderByDescending(p => p.IsFeatured).ThenByDescending(p => p.Id)
                             : query.OrderByDescending(p => p.IsFeatured).ThenBy(p => p.Id);
@@ -145,6 +147,8 @@ namespace ECommerce1.Services
                             : query.OrderBy(p => p.OriginalPrice - p.BasePrice);
                         break;
                     case "best_seller":
+                        // Sắp xếp bán chạy: Đếm tổng số lượng đánh giá (Reviews) không bị ẩn của sản phẩm. 
+                        // Sản phẩm nào được khách mua và đánh giá nhiều nhất sẽ tự động được xếp lên đầu.
                         query = isDesc 
                             ? query.OrderByDescending(p => p.Reviews.Count(r => !r.IsHidden))
                             : query.OrderBy(p => p.Reviews.Count(r => !r.IsHidden));
@@ -234,6 +238,11 @@ namespace ECommerce1.Services
             if (!await _context.Categories.AnyAsync(c => c.Id == request.CategoryId))
                 throw new ArgumentException("Category không tồn tại.");
 
+            // =========================================================================
+            // [XỬ LÝ MÃ SẢN PHẨM - BACK-END]
+            // - Tự động sinh mã sản phẩm (ProductCode) từ tên nếu Admin bỏ trống khi tạo mới.
+            // - Kiểm tra tính duy nhất (Uniqueness Constraint) để tránh trùng mã sản phẩm.
+            // =========================================================================
             var productCode = request.ProductCode;
             if (string.IsNullOrWhiteSpace(productCode))
             {

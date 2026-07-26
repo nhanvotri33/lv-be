@@ -211,10 +211,34 @@ namespace ECommerce1.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Create([FromBody] CategoryRequest request)
         {
-            if (string.IsNullOrWhiteSpace(request.CategoryCode))
-            {
-                request.CategoryCode = ECommerce1.Helpers.CodeGeneratorHelper.GenerateBrandOrCategoryCode(request.Name, 20);
-            }
+            // =========================================================================
+            // [XỬ LÝ MÃ DANH MỤC - BACK-END]
+            // - Tự động sinh mã danh mục (CategoryCode) từ tên nếu Admin bỏ trống khi tạo mới.
+            // - Kiểm tra tính duy nhất (Uniqueness Constraint) để tránh trùng mã danh mục.
+            // =========================================================================
+            string rawCode = request.CategoryCode?.Trim();
+
+            // Nếu người dùng không nhập mã, hệ thống tự động sinh mã viết tắt từ tên danh mục
+            request.CategoryCode = string.IsNullOrWhiteSpace(rawCode)
+                ? ECommerce1.Helpers.CodeGeneratorHelper.GenerateBrandOrCategoryCode(request.Name, 20)
+                : rawCode;
+
+            // 💡 [LỰA CHỌN 1 - BẮT BUỘC TỰ NHẬP MÃ (KHÔNG CHO TỰ SINH)]:
+            // if (string.IsNullOrWhiteSpace(rawCode)) {
+            //     return BadRequest("Mã danh mục không được để trống.");
+            // }
+            // request.CategoryCode = rawCode;
+
+            // 💡 [LỰA CHỌN 2 - BẮT BUỘC TỰ SINH MÃ VIẾT TẮT THEO CHỮ CÁI ĐẦU CỦA MỖI TỪ (KHÔNG CHO SỬA, Ví dụ: "Điện thoại" -> "DT")]:
+            // request.CategoryCode = ECommerce1.Helpers.CodeGeneratorHelper.GenerateBrandOrCategoryCode(request.Name, 20);
+
+            // 💡 [LỰA CHỌN 3 - BẮT BUỘC TỰ SINH MÃ NGUYÊN CHỮ VIẾT HOA KÈM TIỀN TỐ (KHÔNG CHO SỬA, Ví dụ: "Điện thoại" -> "DT-DIENTHOAI")]:
+            // request.CategoryCode = $"DT-{ECommerce1.Helpers.CodeGeneratorHelper.GenerateSlug(request.Name).Replace("-", "").ToUpper()}";
+
+            // 💡 [LỰA CHỌN 4 - TỰ SINH MÃ KÈM TIỀN TỐ CỐ ĐỊNH NẾU BỎ TRỐNG Ô MÃ]:
+            // request.CategoryCode = string.IsNullOrWhiteSpace(rawCode) ? $"DT-{ECommerce1.Helpers.CodeGeneratorHelper.GenerateBrandOrCategoryCode(request.Name, 20)}" : rawCode; // viết tắt
+            // request.CategoryCode = string.IsNullOrWhiteSpace(rawCode) ? $"DT-{ECommerce1.Helpers.CodeGeneratorHelper.GenerateSlug(request.Name).Replace("-", "").ToUpper()}" : rawCode; // đầy đủ
+
             if (await _context.Categories.AnyAsync(c => c.CategoryCode == request.CategoryCode))
             {
                 return BadRequest("Mã này đã tồn tại.");

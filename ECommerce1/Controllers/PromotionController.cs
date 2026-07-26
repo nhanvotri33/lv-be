@@ -68,6 +68,11 @@ namespace ECommerce1.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Create([FromBody] PromotionRequest request)
         {
+            // =========================================================================
+            // [XỬ LÝ MÃ KHUYẾN MÃI - BACK-END]
+            // - Kiểm tra xem mã khuyến mãi (Voucher Code) do Admin nhập vào đã tồn tại chưa.
+            // - Không cho phép trùng mã khuyến mãi để đảm bảo tính duy nhất khi áp dụng voucher.
+            // =========================================================================
             if (await _context.Promotions.AnyAsync(p => p.Code == request.Code))
                 return BadRequest("Mã khuyến mãi này đã tồn tại.");
 

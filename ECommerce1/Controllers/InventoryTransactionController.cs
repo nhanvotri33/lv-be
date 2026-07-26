@@ -328,22 +328,29 @@ namespace ECommerce1.Controllers
                 .ToListAsync();
 
             var response = stocks.Select(s => {
+                // =========================================================================
+                // [ĐỊNH DẠNG MÃ GIAO DỊCH LÔ HÀNG - PHÍA BACK-END]
+                // - Mục đích: Sinh mã giao dịch phục vụ hiển thị chi tiết lô hàng tồn kho.
+                // - Nếu Giảng viên yêu cầu đổi cấu trúc mã (Ví dụ: PS thành PSXB):
+                //   👉 Hãy sửa các giá trị chuỗi gán cho biến 'prefix' bên dưới (Ví dụ: prefix = "PSXB").
+                //   👉 Lưu ý: Sửa đồng bộ với file FE: components/HistoryTable.jsx dòng 128-142.
+                // =========================================================================
                 string transactionCode = "Điều chỉnh";
                 if (s.ReceivingDetailId.HasValue)
                 {
-                    string prefix = "TX";
+                    string prefix = "TX"; // Tiền tố mặc định
                     if (s.ReceivingTransaction != null)
                     {
                         if (s.ReceivingTransaction.TransactionType == "IMPORT_SUPPLIER")
-                            prefix = "ORD";
+                            prefix = "ORD";  // Nhập từ nhà cung cấp
                         else if (s.ReceivingTransaction.TransactionType == "IMPORT_RETURN")
-                            prefix = "REO";
+                            prefix = "REO";  // Nhập trả hàng lỗi từ khách
                         else if (s.ReceivingTransaction.TransactionType == "EXPORT_SELL")
-                            prefix = "PS";
+                            prefix = "PS";   // Xuất bán hàng
                         else if (s.ReceivingTransaction.TransactionType == "EXPORT_DEFECT")
-                            prefix = "ER";
+                            prefix = "ER";   // Xuất trả hàng lỗi cho nhà cung cấp
                     }
-                    transactionCode = $"#{prefix}{s.ReceivingDetailId}";
+                    transactionCode = $"#{prefix}{s.ReceivingDetailId}"; // Ghép thành mã chứng từ đầy đủ
                 }
 
                 return new InventoryDetailDTO

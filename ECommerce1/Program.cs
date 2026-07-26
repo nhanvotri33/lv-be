@@ -9,6 +9,30 @@ using ECommerce1.Services;
 // Cấu hình hiển thị tiếng Việt có dấu trên màn hình Console của Windows
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
+// Tự động tải các biến môi trường từ file .env nếu có (hỗ trợ cả ở thư mục gốc hoặc wwwroot)
+var envPaths = new[] {
+    Path.Combine(Directory.GetCurrentDirectory(), ".env"),
+    Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", ".env")
+};
+foreach (var path in envPaths)
+{
+    if (File.Exists(path))
+    {
+        foreach (var line in File.ReadAllLines(path))
+        {
+            if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#")) continue;
+            var parts = line.Split('=', 2);
+            if (parts.Length == 2)
+            {
+                var key = parts[0].Trim();
+                var val = parts[1].Trim().Trim('"').Trim('\'');
+                Environment.SetEnvironmentVariable(key, val);
+            }
+        }
+        break; // Dừng lại sau khi nạp thành công một file .env
+    }
+}
+
 var builder = WebApplication.CreateBuilder(args);
 
 // 1. Cấu hình DbContext & Services
