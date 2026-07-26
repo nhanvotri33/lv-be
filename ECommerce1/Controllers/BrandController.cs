@@ -174,6 +174,11 @@ namespace ECommerce1.Controllers
                 return BadRequest("Slug đã tồn tại. Vui lòng chọn Slug khác.");
             }
 
+            // =========================================================================
+            // [XỬ LÝ MÃ THƯƠNG HIỆU - BACK-END]
+            // - Tự động sinh mã thương hiệu (BrandCode) nếu bị trống.
+            // - Kiểm tra tính duy nhất (Uniqueness Constraint) để tránh trùng lặp thương hiệu.
+            // =========================================================================
             if (string.IsNullOrWhiteSpace(request.BrandCode))
             {
                 request.BrandCode = ECommerce1.Helpers.CodeGeneratorHelper.GenerateBrandOrCategoryCode(request.Name, 10);
