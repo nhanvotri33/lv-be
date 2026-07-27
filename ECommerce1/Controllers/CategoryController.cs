@@ -218,24 +218,24 @@ namespace ECommerce1.Controllers
             // =========================================================================
             string rawCode = request.CategoryCode?.Trim();
 
-            // Nếu người dùng không nhập mã, hệ thống tự động sinh mã viết tắt từ tên danh mục
+            // Nếu người dùng không nhập mã, hệ thống tự động sinh mã viết tắt từ tên danh mục và admin có quyền sửa mã
             request.CategoryCode = string.IsNullOrWhiteSpace(rawCode)
                 ? ECommerce1.Helpers.CodeGeneratorHelper.GenerateBrandOrCategoryCode(request.Name, 20)
                 : rawCode;
 
-            // 💡 [LỰA CHỌN 1 - BẮT BUỘC TỰ NHẬP MÃ (KHÔNG CHO TỰ SINH)]:
+            //  BẮT BUỘC TỰ NHẬP MÃ (KHÔNG CHO TỰ SINH)
             // if (string.IsNullOrWhiteSpace(rawCode)) {
             //     return BadRequest("Mã danh mục không được để trống.");
             // }
             // request.CategoryCode = rawCode;
 
-            // 💡 [LỰA CHỌN 2 - BẮT BUỘC TỰ SINH MÃ VIẾT TẮT THEO CHỮ CÁI ĐẦU CỦA MỖI TỪ (KHÔNG CHO SỬA, Ví dụ: "Điện thoại" -> "DT")]:
+            //  BẮT BUỘC NHẬP TÊN DMUC VÀ TỰ SINH MÃ VIẾT TẮT THEO CHỮ CÁI ĐẦU CỦA MỖI TỪ (KHÔNG CHO SỬA, Ví dụ: "Điện thoại" -> "DT")
             // request.CategoryCode = ECommerce1.Helpers.CodeGeneratorHelper.GenerateBrandOrCategoryCode(request.Name, 20);
 
-            // 💡 [LỰA CHỌN 3 - BẮT BUỘC TỰ SINH MÃ NGUYÊN CHỮ VIẾT HOA KÈM TIỀN TỐ (KHÔNG CHO SỬA, Ví dụ: "Điện thoại" -> "DT-DIENTHOAI")]:
+            //  BẮT BUỘC NHẬP TÊN DMUC VÀ TỰ SINH MÃ NGUYÊN CHỮ VIẾT HOA KÈM TIỀN TỐ (KHÔNG CHO SỬA, Ví dụ: "Điện thoại" -> "DT-DIENTHOAI")
             // request.CategoryCode = $"DT-{ECommerce1.Helpers.CodeGeneratorHelper.GenerateSlug(request.Name).Replace("-", "").ToUpper()}";
 
-            // 💡 [LỰA CHỌN 4 - TỰ SINH MÃ KÈM TIỀN TỐ CỐ ĐỊNH NẾU BỎ TRỐNG Ô MÃ]:
+            // TỰ SINH MÃ KÈM TIỀN TỐ CỐ ĐỊNH NẾU BỎ TRỐNG Ô MÃ
             // request.CategoryCode = string.IsNullOrWhiteSpace(rawCode) ? $"DT-{ECommerce1.Helpers.CodeGeneratorHelper.GenerateBrandOrCategoryCode(request.Name, 20)}" : rawCode; // viết tắt
             // request.CategoryCode = string.IsNullOrWhiteSpace(rawCode) ? $"DT-{ECommerce1.Helpers.CodeGeneratorHelper.GenerateSlug(request.Name).Replace("-", "").ToUpper()}" : rawCode; // đầy đủ
 
