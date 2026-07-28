@@ -83,6 +83,8 @@ namespace ECommerce1.Services
             var query = _context.Products
                 .Include(p => p.Brand)
                 .Include(p => p.Reviews)
+                .Include(p => p.Category)
+                    .ThenInclude(c => c.ParentCategory)
                 .AsQueryable();
 
             if (!includeInactive)
@@ -185,7 +187,8 @@ namespace ECommerce1.Services
                 IsAvailable = p.IsActive && validCategoryIds.Contains(p.CategoryId) && (p.BrandId == null || (p.Brand != null && p.Brand.IsActive != false)),
                 BrandIsActive = p.Brand != null ? (bool?)p.Brand.IsActive : null,
                 AverageRating = p.Reviews != null && p.Reviews.Any(r => !r.IsHidden) ? p.Reviews.Where(r => !r.IsHidden).Average(r => r.Rating) : 5.0,
-                ReviewCount = p.Reviews != null ? p.Reviews.Count(r => !r.IsHidden) : 0
+                ReviewCount = p.Reviews != null ? p.Reviews.Count(r => !r.IsHidden) : 0,
+                IsAccessory = CheckIsAccessory(p)
             }).ToList();
         }
 
@@ -194,6 +197,8 @@ namespace ECommerce1.Services
             var product = await _context.Products
                 .Include(p => p.Brand)
                 .Include(p => p.Reviews)
+                .Include(p => p.Category)
+                    .ThenInclude(c => c.ParentCategory)
                 .FirstOrDefaultAsync(p => p.Id == id);
 
             if (product == null)
@@ -229,7 +234,8 @@ namespace ECommerce1.Services
                 IsAvailable = isAvailable,
                 BrandIsActive = product.Brand != null ? (bool?)product.Brand.IsActive : null,
                 AverageRating = product.Reviews != null && product.Reviews.Any(r => !r.IsHidden) ? product.Reviews.Where(r => !r.IsHidden).Average(r => r.Rating) : 5.0,
-                ReviewCount = product.Reviews != null ? product.Reviews.Count(r => !r.IsHidden) : 0
+                ReviewCount = product.Reviews != null ? product.Reviews.Count(r => !r.IsHidden) : 0,
+                IsAccessory = CheckIsAccessory(product)
             };
         }
 
@@ -237,6 +243,10 @@ namespace ECommerce1.Services
         {
             if (!await _context.Categories.AnyAsync(c => c.Id == request.CategoryId))
                 throw new ArgumentException("Category không tồn tại.");
+
+            // RÀNG BUỘC GIÁ (SERVER-SIDE): Giá bán không được lớn hơn giá gốc (giá niêm yết trước khi giảm)
+            if (request.OriginalPrice.HasValue && request.BasePrice > request.OriginalPrice.Value)
+                throw new ArgumentException("Giá bán không được lớn hơn giá gốc.");
 
             // =========================================================================
             // [XỬ LÝ MÃ SẢN PHẨM - BACK-END]
@@ -338,6 +348,10 @@ namespace ECommerce1.Services
             if (!await _context.Categories.AnyAsync(c => c.Id == request.CategoryId))
                 throw new ArgumentException("Category không tồn tại.");
 
+            // RÀNG BUỘC GIÁ (SERVER-SIDE): Giá bán không được lớn hơn giá gốc (giá niêm yết trước khi giảm)
+            if (request.OriginalPrice.HasValue && request.BasePrice > request.OriginalPrice.Value)
+                throw new ArgumentException("Giá bán không được lớn hơn giá gốc.");
+
             var productCode = request.ProductCode;
             if (string.IsNullOrWhiteSpace(productCode))
             {
@@ -425,6 +439,42 @@ namespace ECommerce1.Services
             return imagesStr.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
                             .Select(s => s.Trim())
                             .ToList();
+        }
+
+        private bool CheckIsAccessory(Product p)
+        {
+            if (p == null) return false;
+            
+            var nameLower = (p.Name ?? "").ToLower();
+            if (nameLower.Contains("tai nghe") || nameLower.Contains("sạc") || 
+                nameLower.Contains("ốp") || nameLower.Contains("kính") || nameLower.Contains("cáp"))
+            {
+                return true;
+            }
+
+            if (p.Category != null)
+            {
+                var catName = (p.Category.Name ?? "").ToLower();
+                if (catName.Contains("phụ kiện") || catName.Contains("tai nghe") || 
+                    catName.Contains("cáp") || catName.Contains("sạc") || 
+                    catName.Contains("ốp") || catName.Contains("kính"))
+                {
+                    return true;
+                }
+
+                if (p.Category.ParentCategory != null)
+                {
+                    var parentName = (p.Category.ParentCategory.Name ?? "").ToLower();
+                    if (parentName.Contains("phụ kiện") || parentName.Contains("tai nghe") || 
+                        parentName.Contains("cáp") || parentName.Contains("sạc") || 
+                        parentName.Contains("ốp") || parentName.Contains("kính"))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
     }
 }
