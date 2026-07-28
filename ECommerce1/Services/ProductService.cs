@@ -101,19 +101,11 @@ namespace ECommerce1.Services
                 query = query.Where(p => categoryBranchIds.Contains(p.CategoryId));
             }
 
-            // 1.5 Lọc theo Thương hiệu (Brand): Gộp chung Apple và iPhone
+            // 1.5 Lọc theo Thương hiệu (Brand)
             if (!string.IsNullOrWhiteSpace(brand))
             {
                 var bName = brand.ToLower().Trim();
-                if (bName == "iphone" || bName == "apple")
-                {
-                    query = query.Where(p => p.Brand != null && 
-                                             (p.Brand.Name.ToLower() == "apple" || p.Brand.Name.ToLower() == "iphone"));
-                }
-                else
-                {
-                    query = query.Where(p => p.Brand != null && p.Brand.Name.ToLower() == bName);
-                }
+                query = query.Where(p => p.Brand != null && p.Brand.Name.ToLower() == bName);
             }
 
             // 2. Lọc theo từ khóa tìm kiếm
