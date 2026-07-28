@@ -30,5 +30,6 @@ namespace ECommerce1.DTOs.Product
         public bool? BrandIsActive { get; set; }
         public double AverageRating { get; set; }
         public int ReviewCount { get; set; }
+        public bool IsAccessory { get; set; }
     }
 }
