@@ -812,6 +812,9 @@ namespace ECommerce1.Services
             if (string.IsNullOrEmpty(phoneNumber))
                 throw new ArgumentException("Vui lòng cung cấp số điện thoại.");
 
+            // LOGIC TRA CỨU KHÁCH VÃNG LAI: 
+            // 1. SELECT thông tin từ bảng Orders kết hợp JOIN các bảng OrderItems, ProductVariants, Products, Promotion, OrderStatus để có đầy đủ thông tin hiển thị timeline và chi tiết.
+            // 2. Điểm quan trọng: Lọc chính xác theo mã hóa đơn (Id) và số điện thoại nhận hàng của khách (ReceiverPhone) để tránh rò rỉ thông tin đơn hàng của khách hàng khác.
             var order = await _context.Orders
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.ProductVariant)
