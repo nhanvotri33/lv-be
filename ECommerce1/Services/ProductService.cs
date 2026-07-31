@@ -371,6 +371,8 @@ namespace ECommerce1.Services
                 _fileService.DeleteImage(imgUrl);
             }
 
+            var oldThumbnail = product.ThumbnailImage;
+
             product.Name = request.Name;
             product.Slug = request.Slug;
             product.ProductCode = productCode;
@@ -395,6 +397,16 @@ namespace ECommerce1.Services
             product.Images = request.Images;
             product.VideoUrl = request.VideoUrl;
             product.UpdatedAt = DateTime.UtcNow;
+
+            // Đồng bộ hình ảnh cho các biến thể nếu biến thể chưa có hình riêng hoặc đang dùng hình đại diện cũ của sản phẩm
+            var variants = await _context.ProductVariants.Where(pv => pv.ProductId == product.Id).ToListAsync();
+            foreach (var v in variants)
+            {
+                if (string.IsNullOrEmpty(v.ImageId) || v.ImageId == oldThumbnail)
+                {
+                    v.ImageId = request.ThumbnailImage ?? "";
+                }
+            }
 
             await _context.SaveChangesAsync();
         }

@@ -91,6 +91,9 @@ namespace ECommerce1.Services
             if (!string.IsNullOrEmpty(finalSku) && await _context.ProductVariants.AnyAsync(pv => pv.Sku.ToUpper() == finalSku))
                 throw new ArgumentException($"Mã SKU '{finalSku}' đã tồn tại ở một biến thể khác.");
 
+            var product = await _context.Products.FindAsync(request.ProductId);
+            var imageId = !string.IsNullOrEmpty(request.ImageId) ? request.ImageId : (product?.ThumbnailImage ?? "");
+
             var newVariant = new ProductVariant
             {
                 Name = request.Name,
@@ -101,7 +104,7 @@ namespace ECommerce1.Services
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
                 ProductId = request.ProductId,
-                ImageId = request.ImageId ?? "",
+                ImageId = imageId,
                 Attributes = request.Attributes ?? "{}",
                 SpecsOverride = request.SpecsOverride,
                 IsActive = request.IsActive
@@ -197,6 +200,8 @@ namespace ECommerce1.Services
                 if (!string.IsNullOrEmpty(finalSku) && (newVariants.Any(nv => nv.Sku == finalSku) || await _context.ProductVariants.AnyAsync(pv => pv.Sku.ToUpper() == finalSku)))
                     throw new ArgumentException($"Mã SKU '{finalSku}' bị trùng lặp.");
 
+                var imageId = !string.IsNullOrEmpty(request.ImageId) ? request.ImageId : (product?.ThumbnailImage ?? "");
+
                 newVariants.Add(new ProductVariant
                 {
                     Name = request.Name,
@@ -207,7 +212,7 @@ namespace ECommerce1.Services
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow,
                     ProductId = request.ProductId,
-                    ImageId = request.ImageId ?? "",
+                    ImageId = imageId,
                     Attributes = request.Attributes ?? "{}",
                     SpecsOverride = request.SpecsOverride,
                     IsActive = request.IsActive
@@ -248,12 +253,15 @@ namespace ECommerce1.Services
             int oldProductId = variant.ProductId;
             int newProductId = request.ProductId;
 
+            var product = await _context.Products.FindAsync(request.ProductId);
+            var imageId = !string.IsNullOrEmpty(request.ImageId) ? request.ImageId : (product?.ThumbnailImage ?? "");
+
             variant.Name = request.Name;
             variant.Sku = finalSku;
             variant.Price = request.Price;
             variant.TotalStock = request.TotalStock;
             variant.ProductId = request.ProductId;
-            variant.ImageId = request.ImageId ?? "";
+            variant.ImageId = imageId;
             variant.Attributes = request.Attributes ?? "{}";
             variant.SpecsOverride = request.SpecsOverride;
             variant.IsActive = request.IsActive;
@@ -354,7 +362,7 @@ namespace ECommerce1.Services
                         existing.Sku = finalSku;
                         existing.Price = request.Price;
                         existing.TotalStock = request.TotalStock;
-                        existing.ImageId = request.ImageId ?? "";
+                        existing.ImageId = !string.IsNullOrEmpty(request.ImageId) ? request.ImageId : (product?.ThumbnailImage ?? "");
                         existing.Attributes = request.Attributes ?? "{}";
                         existing.SpecsOverride = request.SpecsOverride;
                         existing.IsActive = request.IsActive;
@@ -367,6 +375,8 @@ namespace ECommerce1.Services
                     if (await _context.ProductVariants.AnyAsync(pv => pv.Sku.ToUpper() == finalSku))
                         throw new ArgumentException($"Mã SKU '{finalSku}' đã tồn tại ở một biến thể khác.");
 
+                    var imageId = !string.IsNullOrEmpty(request.ImageId) ? request.ImageId : (product?.ThumbnailImage ?? "");
+
                     var newV = new ProductVariant
                     {
                         Name = request.Name,
@@ -377,7 +387,7 @@ namespace ECommerce1.Services
                         CreatedAt = DateTime.UtcNow,
                         UpdatedAt = DateTime.UtcNow,
                         ProductId = productId,
-                        ImageId = request.ImageId ?? "",
+                        ImageId = imageId,
                         Attributes = request.Attributes ?? "{}",
                         SpecsOverride = request.SpecsOverride,
                         IsActive = request.IsActive
