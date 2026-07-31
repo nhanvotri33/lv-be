@@ -145,7 +145,16 @@ namespace ECommerce1.Services
                 if (cart == null || cart.CartItems == null || !cart.CartItems.Any())
                     throw new ArgumentException("Giỏ hàng của bạn đang trống.");
 
-                // 2. Kiểm tra tồn kho trước khi đặt
+                // 2. Khóa dòng ProductVariants với UPDLOCK để tránh Deadlock và Race Condition khi nhiều người cùng đặt hàng
+                var variantIds = cart.CartItems.Select(ci => ci.VariantId).Distinct().ToList();
+                foreach (var vId in variantIds)
+                {
+                    await _context.ProductVariants
+                        .FromSqlRaw("SELECT * FROM ProductVariants WITH (UPDLOCK, HOLDLOCK) WHERE Id = {0}", vId)
+                        .FirstOrDefaultAsync();
+                }
+
+                // 3. Kiểm tra tồn kho trước khi đặt
                 foreach (var item in cart.CartItems)
                 {
                     if (item.ProductVariant.AvailableStock < item.Quantity)
@@ -255,11 +264,12 @@ namespace ECommerce1.Services
                 decimal discountValue = 0;
                 Promotion appliedPromotion = null;
 
-                // 4. Áp dụng mã giảm giá (Nếu có)
+                // 4. Áp dụng mã giảm giá (Khóa bảng Promotion với UPDLOCK để ngăn quá UsageLimit khi đồng thời checkout)
                 if (!string.IsNullOrEmpty(request.PromotionCode))
                 {
                     appliedPromotion = await _context.Promotions
-                        .FirstOrDefaultAsync(p => p.Code == request.PromotionCode && p.IsActive);
+                        .FromSqlRaw("SELECT * FROM Promotions WITH (UPDLOCK, HOLDLOCK) WHERE Code = {0} AND IsActive = 1", request.PromotionCode)
+                        .FirstOrDefaultAsync();
 
                     if (appliedPromotion == null)
                         throw new ArgumentException("Mã giảm giá không tồn tại hoặc đã bị khóa.");
@@ -585,54 +595,66 @@ namespace ECommerce1.Services
 
         public async Task CancelOrderAsync(int id, Guid? userId, string? phoneNumber)
         {
-            Order order = null;
-
-            if (userId.HasValue)
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
             {
-                order = await _context.Orders
-                    .Include(o => o.OrderItems)
-                        .ThenInclude(oi => oi.ProductVariant)
-                    .FirstOrDefaultAsync(o => o.Id == id && o.UserId == userId.Value);
-            }
-            else
-            {
-                if (string.IsNullOrEmpty(phoneNumber))
-                    throw new UnauthorizedAccessException("Bạn cần đăng nhập hoặc cung cấp số điện thoại nhận hàng để hủy đơn hàng.");
+                Order order = null;
 
-                order = await _context.Orders
-                    .Include(o => o.OrderItems)
-                        .ThenInclude(oi => oi.ProductVariant)
-                    .FirstOrDefaultAsync(o => o.Id == id && o.ReceiverPhone == phoneNumber.Trim());
-            }
-
-            if (order == null)
-                throw new KeyNotFoundException("Không tìm thấy đơn hàng của bạn.");
-
-            // Chỉ cho phép hủy nếu đơn hàng đang ở trạng thái Pending (1) (Chờ xác nhận)
-            if (order.OrderStatusId != 1)
-                throw new ArgumentException("Bạn không thể hủy đơn hàng này vì nó đã được cửa hàng xác nhận và đang đóng gói/giao đi.");
-
-            // Trạng thái 5 là Cancelled (Đã hủy)
-            order.OrderStatusId = 5;
-
-            // Xử lý tồn kho: Trả lại ReservedStock cho kho giữ chỗ
-            foreach (var item in order.OrderItems)
-            {
-                if (item.ProductVariant != null)
+                if (userId.HasValue)
                 {
-                    item.ProductVariant.ReservedStock -= item.Quantity;
-                    if (item.ProductVariant.ReservedStock < 0) item.ProductVariant.ReservedStock = 0;
+                    order = await _context.Orders
+                        .FromSqlRaw("SELECT * FROM Orders WITH (UPDLOCK, HOLDLOCK) WHERE Id = {0} AND UserId = {1}", id, userId.Value)
+                        .Include(o => o.OrderItems)
+                            .ThenInclude(oi => oi.ProductVariant)
+                        .FirstOrDefaultAsync();
                 }
-            }
+                else
+                {
+                    if (string.IsNullOrEmpty(phoneNumber))
+                        throw new UnauthorizedAccessException("Bạn cần đăng nhập hoặc cung cấp số điện thoại nhận hàng để hủy đơn hàng.");
 
-            // Hoàn lại điểm đã tiêu dùng cho khách
-            var userObj = await _context.Users.FindAsync(order.UserId);
-            if (userObj != null && order.PointsRedeemed > 0)
+                    order = await _context.Orders
+                        .FromSqlRaw("SELECT * FROM Orders WITH (UPDLOCK, HOLDLOCK) WHERE Id = {0} AND ReceiverPhone = {1}", id, phoneNumber.Trim())
+                        .Include(o => o.OrderItems)
+                            .ThenInclude(oi => oi.ProductVariant)
+                        .FirstOrDefaultAsync();
+                }
+
+                if (order == null)
+                    throw new KeyNotFoundException("Không tìm thấy đơn hàng của bạn.");
+
+                // Chỉ cho phép hủy nếu đơn hàng đang ở trạng thái Pending (1) (Chờ xác nhận)
+                if (order.OrderStatusId != 1)
+                    throw new ArgumentException("Bạn không thể hủy đơn hàng này vì nó đã được cửa hàng xác nhận và đang đóng gói/giao đi.");
+
+                // Trạng thái 5 là Cancelled (Đã hủy)
+                order.OrderStatusId = 5;
+
+                // Xử lý tồn kho: Trả lại ReservedStock cho kho giữ chỗ
+                foreach (var item in order.OrderItems)
+                {
+                    if (item.ProductVariant != null)
+                    {
+                        item.ProductVariant.ReservedStock -= item.Quantity;
+                        if (item.ProductVariant.ReservedStock < 0) item.ProductVariant.ReservedStock = 0;
+                    }
+                }
+
+                // Hoàn lại điểm đã tiêu dùng cho khách
+                var userObj = await _context.Users.FindAsync(order.UserId);
+                if (userObj != null && order.PointsRedeemed > 0)
+                {
+                    userObj.RewardPoints += order.PointsRedeemed;
+                }
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
+            catch
             {
-                userObj.RewardPoints += order.PointsRedeemed;
+                await transaction.RollbackAsync();
+                throw;
             }
-
-            await _context.SaveChangesAsync();
         }
 
         /// <summary>
@@ -644,167 +666,170 @@ namespace ECommerce1.Services
         /// </summary>
         public async Task UpdateOrderStatusAsync(int id, int newStatusId)
         {
-            var order = await _context.Orders
-                .Include(o => o.OrderItems)
-                    .ThenInclude(oi => oi.ProductVariant)
-                .FirstOrDefaultAsync(o => o.Id == id);
-
-            if (order == null)
-                throw new KeyNotFoundException("Không tìm thấy đơn hàng.");
-
-            var statusExists = await _context.OrderStatuses.AnyAsync(s => s.Id == newStatusId);
-            if (!statusExists)
-                throw new ArgumentException("Trạng thái đơn hàng không hợp lệ.");
-
-            int oldStatusId = order.OrderStatusId;
-            if (oldStatusId == newStatusId)
-                return; // Trạng thái không đổi
-
-            // Các trạng thái cuối cùng (Cancelled, Return_failed, Refunded) không cho phép thay đổi nữa
-            // Còn Completed chỉ cho phép chuyển sang Refunded
-            if (oldStatusId == 5 || oldStatusId == 6 || oldStatusId == 7 || (oldStatusId == 4 && newStatusId != 7))
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
             {
-                throw new ArgumentException("Đơn hàng đã ở trạng thái kết thúc, không thể thay đổi trạng thái này.");
-            }
+                // Khóa hàng đơn hàng bằng UPDLOCK để tránh race condition khi Webhook & Admin cập nhật cùng lúc
+                var order = await _context.Orders
+                    .FromSqlRaw("SELECT * FROM Orders WITH (UPDLOCK, HOLDLOCK) WHERE Id = {0}", id)
+                    .Include(o => o.OrderItems)
+                        .ThenInclude(oi => oi.ProductVariant)
+                    .FirstOrDefaultAsync();
 
-            // Xử lý logic tồn kho (ReservedStock và TotalStock)
-            // 1. Chuyển từ Chờ duyệt (1) sang Đã duyệt/Đang giao/Hoàn thành (2, 3, 4) -> Trừ kho luôn
-            if (oldStatusId == 1 && (newStatusId == 2 || newStatusId == 3 || newStatusId == 4))
-            {
-                foreach (var item in order.OrderItems)
+                if (order == null)
+                    throw new KeyNotFoundException("Không tìm thấy đơn hàng.");
+
+                var statusExists = await _context.OrderStatuses.AnyAsync(s => s.Id == newStatusId);
+                if (!statusExists)
+                    throw new ArgumentException("Trạng thái đơn hàng không hợp lệ.");
+
+                int oldStatusId = order.OrderStatusId;
+                if (oldStatusId == newStatusId)
                 {
-                    if (item.ProductVariant != null)
+                    await transaction.CommitAsync();
+                    return; // Trạng thái không đổi
+                }
+
+                // Các trạng thái cuối cùng (Cancelled, Return_failed, Refunded) không cho phép thay đổi nữa
+                // Còn Completed chỉ cho phép chuyển sang Refunded
+                if (oldStatusId == 5 || oldStatusId == 6 || oldStatusId == 7 || (oldStatusId == 4 && newStatusId != 7))
+                {
+                    throw new ArgumentException("Đơn hàng đã ở trạng thái kết thúc, không thể thay đổi trạng thái này.");
+                }
+
+                // Xử lý logic tồn kho (ReservedStock và TotalStock)
+                // 1. Chuyển từ Chờ duyệt (1) sang Đã duyệt/Đang giao/Hoàn thành (2, 3, 4) -> Trừ kho luôn
+                if (oldStatusId == 1 && (newStatusId == 2 || newStatusId == 3 || newStatusId == 4))
+                {
+                    foreach (var item in order.OrderItems)
                     {
-                        item.ProductVariant.TotalStock -= item.Quantity;
-                        item.ProductVariant.ReservedStock -= item.Quantity;
-
-                        if (item.ProductVariant.TotalStock < 0) item.ProductVariant.TotalStock = 0;
-                        if (item.ProductVariant.ReservedStock < 0) item.ProductVariant.ReservedStock = 0;
-                    }
-                }
-            }
-            // 2. Chuyển từ các trạng thái đã xác nhận/đang giao (2, 3) sang Hủy (5), Thất bại (6) hoặc Hoàn tiền (7) -> Hoàn trả kho tổng (vì đã trừ ở bước 1)
-            else if ((oldStatusId == 2 || oldStatusId == 3) && (newStatusId == 5 || newStatusId == 6 || newStatusId == 7))
-            {
-                foreach (var item in order.OrderItems)
-                {
-                    if (item.ProductVariant != null)
-                    {
-                        item.ProductVariant.TotalStock += item.Quantity;
-                    }
-                }
-            }
-            // 3. Chuyển từ Chờ duyệt (1) sang Hủy (5), Thất bại (6) hoặc Hoàn tiền (7) -> Chỉ giải phóng kho giữ chỗ (vì chưa trừ kho tổng)
-            else if (oldStatusId == 1 && (newStatusId == 5 || newStatusId == 6 || newStatusId == 7))
-            {
-                foreach (var item in order.OrderItems)
-                {
-                    if (item.ProductVariant != null)
-                    {
-                        item.ProductVariant.ReservedStock -= item.Quantity;
-                        if (item.ProductVariant.ReservedStock < 0) item.ProductVariant.ReservedStock = 0;
-                    }
-                }
-            }
-
-            // Đồng bộ Product.TotalStock và Product.ReservedStock từ tổng các Variant
-            var affectedProductIds = order.OrderItems
-                .Where(i => i.ProductVariant != null)
-                .Select(i => i.ProductVariant!.ProductId)
-                .Distinct()
-                .ToList();
-
-            foreach (var productId in affectedProductIds)
-            {
-                var product = await _context.Products.FindAsync(productId);
-                if (product != null)
-                {
-                    var variants = await _context.ProductVariants
-                        .Where(pv => pv.ProductId == productId)
-                        .ToListAsync();
-
-                    product.TotalStock = variants.Sum(pv => pv.TotalStock);
-                    product.ReservedStock = variants.Sum(pv => pv.ReservedStock);
-                }
-            }
-
-            // Xử lý cộng điểm tích lũy khi hoàn thành đơn (OrderStatusId = 4 - Completed)
-            // - RewardPoints: Điểm dùng để trừ tiền mua hàng lần sau.
-            // - AccumulatedPoints: Điểm tích lũy trọn đời chỉ tăng, không giảm khi đổi quà, dùng xét Hạng thành viên (Đồng/Bạc/Vàng).
-            if (newStatusId == 4 && oldStatusId != 4)
-            {
-                var user = await _context.Users.FindAsync(order.UserId);
-                if (user != null)
-                {
-                    user.RewardPoints += order.PointsEarned;
-                    user.AccumulatedPoints += order.PointsEarned;
-                }
-            }
-
-            // Xử lý hoàn điểm khi hủy đơn hoặc hoàn tiền
-            // TRƯỜNG HỢP 1: Đơn hàng ở trạng thái đang xử lý (1, 2, 3) bị hủy hoặc thất bại (5, 6, 7).
-            // - Đơn hàng này chưa bao giờ hoàn thành (chưa đạt trạng thái 4) nên khách chưa được cộng điểm thưởng của đơn này.
-            // - Hệ thống chỉ cần hoàn trả lại số điểm cũ mà khách đã tiêu dùng (PointsRedeemed) khi thanh toán đơn hàng này.
-            if ((newStatusId == 5 || newStatusId == 6 || newStatusId == 7) && (oldStatusId == 1 || oldStatusId == 2 || oldStatusId == 3))
-            {
-                var user = await _context.Users.FindAsync(order.UserId);
-                if (user != null && order.PointsRedeemed > 0)
-                {
-                    user.RewardPoints += order.PointsRedeemed;
-                }
-            }
-            // TRƯỜNG HỢP 2: Đơn hàng đã giao thành công (4) nhưng sau đó bị đổi trả/hoàn tiền (7)
-            // - Vì đơn hàng đã hoàn thành trước đó nên khách đã được cộng cả điểm thưởng (RewardPoints) và điểm xét hạng (AccumulatedPoints).
-            // - Hệ thống cần:
-            //   1. Thu hồi lại số điểm thưởng mới nhận từ đơn này.
-            //   2. Thu hồi lại số điểm tích lũy xét hạng mới nhận từ đơn này.
-            //   3. Hoàn trả lại số điểm cũ mà khách đã tiêu dùng để thanh toán đơn này.
-            else if (oldStatusId == 4 && newStatusId == 7)
-            {
-                // Thu hồi điểm tích lũy và hoàn trả điểm đã tiêu dùng (Không hoàn lại kho tồn máy mới)
-                var user = await _context.Users.FindAsync(order.UserId);
-                if (user != null)
-                {
-                    user.RewardPoints -= order.PointsEarned;
-                    if (user.RewardPoints < 0) user.RewardPoints = 0;
-
-                    user.AccumulatedPoints -= order.PointsEarned;
-                    if (user.AccumulatedPoints < 0) user.AccumulatedPoints = 0;
-
-                    user.RewardPoints += order.PointsRedeemed;
-                }
-            }
-
-            // Hoàn tiền tự động qua cổng thanh toán Stripe nếu có
-            if (newStatusId == 7)
-            {
-                var payment = await _context.Payments
-                    .FirstOrDefaultAsync(p => p.OrderId == order.Id && p.Status == "succeeded" && p.Provider == "stripe");
-
-                if (payment != null && !string.IsNullOrEmpty(payment.ProviderTransactionId))
-                {
-                    var stripeProvider = _paymentProviders.FirstOrDefault(p => p.ProviderName.Equals("stripe", StringComparison.OrdinalIgnoreCase));
-                    if (stripeProvider != null)
-                    {
-                        try
+                        if (item.ProductVariant != null)
                         {
-                            bool refundSuccess = await stripeProvider.RefundAsync(payment.ProviderTransactionId, payment.Amount);
-                            if (refundSuccess)
+                            item.ProductVariant.TotalStock -= item.Quantity;
+                            item.ProductVariant.ReservedStock -= item.Quantity;
+
+                            if (item.ProductVariant.TotalStock < 0) item.ProductVariant.TotalStock = 0;
+                            if (item.ProductVariant.ReservedStock < 0) item.ProductVariant.ReservedStock = 0;
+                        }
+                    }
+                }
+                // 2. Chuyển từ các trạng thái đã xác nhận/đang giao (2, 3) sang Hủy (5), Thất bại (6) hoặc Hoàn tiền (7) -> Hoàn trả kho tổng (vì đã trừ ở bước 1)
+                else if ((oldStatusId == 2 || oldStatusId == 3) && (newStatusId == 5 || newStatusId == 6 || newStatusId == 7))
+                {
+                    foreach (var item in order.OrderItems)
+                    {
+                        if (item.ProductVariant != null)
+                        {
+                            item.ProductVariant.TotalStock += item.Quantity;
+                        }
+                    }
+                }
+                // 3. Chuyển từ Chờ duyệt (1) sang Hủy (5), Thất bại (6) hoặc Hoàn tiền (7) -> Chỉ giải phóng kho giữ chỗ (vì chưa trừ kho tổng)
+                else if (oldStatusId == 1 && (newStatusId == 5 || newStatusId == 6 || newStatusId == 7))
+                {
+                    foreach (var item in order.OrderItems)
+                    {
+                        if (item.ProductVariant != null)
+                        {
+                            item.ProductVariant.ReservedStock -= item.Quantity;
+                            if (item.ProductVariant.ReservedStock < 0) item.ProductVariant.ReservedStock = 0;
+                        }
+                    }
+                }
+
+                // Đồng bộ Product.TotalStock và Product.ReservedStock từ tổng các Variant
+                var affectedProductIds = order.OrderItems
+                    .Where(i => i.ProductVariant != null)
+                    .Select(i => i.ProductVariant!.ProductId)
+                    .Distinct()
+                    .ToList();
+
+                foreach (var productId in affectedProductIds)
+                {
+                    var product = await _context.Products.FindAsync(productId);
+                    if (product != null)
+                    {
+                        var variants = await _context.ProductVariants
+                            .Where(pv => pv.ProductId == productId)
+                            .ToListAsync();
+
+                        product.TotalStock = variants.Sum(pv => pv.TotalStock);
+                        product.ReservedStock = variants.Sum(pv => pv.ReservedStock);
+                    }
+                }
+
+                // Xử lý cộng điểm tích lũy khi hoàn thành đơn (OrderStatusId = 4 - Completed)
+                if (newStatusId == 4 && oldStatusId != 4)
+                {
+                    var user = await _context.Users.FindAsync(order.UserId);
+                    if (user != null)
+                    {
+                        user.RewardPoints += order.PointsEarned;
+                        user.AccumulatedPoints += order.PointsEarned;
+                    }
+                }
+
+                // Xử lý hoàn điểm khi hủy đơn hoặc hoàn tiền
+                if ((newStatusId == 5 || newStatusId == 6 || newStatusId == 7) && (oldStatusId == 1 || oldStatusId == 2 || oldStatusId == 3))
+                {
+                    var user = await _context.Users.FindAsync(order.UserId);
+                    if (user != null && order.PointsRedeemed > 0)
+                    {
+                        user.RewardPoints += order.PointsRedeemed;
+                    }
+                }
+                else if (oldStatusId == 4 && newStatusId == 7)
+                {
+                    var user = await _context.Users.FindAsync(order.UserId);
+                    if (user != null)
+                    {
+                        user.RewardPoints -= order.PointsEarned;
+                        if (user.RewardPoints < 0) user.RewardPoints = 0;
+
+                        user.AccumulatedPoints -= order.PointsEarned;
+                        if (user.AccumulatedPoints < 0) user.AccumulatedPoints = 0;
+
+                        user.RewardPoints += order.PointsRedeemed;
+                    }
+                }
+
+                // Hoàn tiền tự động qua cổng thanh toán Stripe nếu có
+                if (newStatusId == 7)
+                {
+                    var payment = await _context.Payments
+                        .FirstOrDefaultAsync(p => p.OrderId == order.Id && p.Status == "succeeded" && p.Provider == "stripe");
+
+                    if (payment != null && !string.IsNullOrEmpty(payment.ProviderTransactionId))
+                    {
+                        var stripeProvider = _paymentProviders.FirstOrDefault(p => p.ProviderName.Equals("stripe", StringComparison.OrdinalIgnoreCase));
+                        if (stripeProvider != null)
+                        {
+                            try
                             {
-                                payment.Status = "refunded";
-                                payment.UpdatedAt = DateTime.UtcNow;
+                                bool refundSuccess = await stripeProvider.RefundAsync(payment.ProviderTransactionId, payment.Amount);
+                                if (refundSuccess)
+                                {
+                                    payment.Status = "refunded";
+                                    payment.UpdatedAt = DateTime.UtcNow;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                throw new Exception($"Lỗi tự động hoàn tiền qua Stripe: {ex.Message}. Vui lòng kiểm tra lại cấu hình hoặc hoàn tiền thủ công.", ex);
                             }
                         }
-                        catch (Exception ex)
-                        {
-                            throw new Exception($"Lỗi tự động hoàn tiền qua Stripe: {ex.Message}. Vui lòng kiểm tra lại cấu hình hoặc hoàn tiền thủ công.", ex);
-                        }
                     }
                 }
-            }
 
-            order.OrderStatusId = newStatusId;
-            await _context.SaveChangesAsync();
+                order.OrderStatusId = newStatusId;
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
         }
 
         public async Task<OrderResponse> TrackOrderAsync(int id, string phoneNumber)
