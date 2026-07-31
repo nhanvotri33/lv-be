@@ -419,8 +419,14 @@ namespace ECommerce1.Services
                 decimal finalPrice = priceBeforePoints + shippingFee;
                 if (finalPrice < 0) finalPrice = 0;
 
-                // Tích lũy điểm thưởng: 0.2% trên số tiền thanh toán cuối cùng
-                int pointsEarned = (int)(finalPrice * 0.002m);
+                 // =========================================================================
+                 // [TÍCH LŨY ĐIỂM THƯỞNG - BACK-END]
+                 // - Hệ số: 0.002m tương ứng với 0.2% giá trị đơn hàng thanh toán cuối cùng (finalPrice).
+                 // - Ví dụ: đơn hàng 10.000.000đ thì khách nhận được: 10.000.000 * 0.002 = 20.000 điểm.
+                 // - Nếu muốn đổi sang 20%, đổi 0.002m thành 0.2m ở đây.
+                 // =========================================================================
+                 // Tích lũy điểm thưởng: 0.2% trên số tiền thanh toán cuối cùng
+                 int pointsEarned = (int)(finalPrice * 0.002m);
 
                 if (pointsRedeemed > 0)
                 {
@@ -759,17 +765,24 @@ namespace ECommerce1.Services
                 }
 
                 // Xử lý cộng điểm tích lũy khi hoàn thành đơn (OrderStatusId = 4 - Completed)
+                // - RewardPoints: Điểm dùng để trừ tiền mua hàng lần sau.
+                // - AccumulatedPoints: Điểm tích lũy trọn đời chỉ tăng, không giảm khi đổi quà, dùng xét Hạng thành viên (Đồng/Bạc/Vàng).
                 if (newStatusId == 4 && oldStatusId != 4)
                 {
                     var user = await _context.Users.FindAsync(order.UserId);
                     if (user != null)
                     {
+                        // Cộng điểm thưởng tích lũy của đơn hàng (đã được tính bằng 0.2% ở bước đặt hàng) vào tài khoản thành viên
                         user.RewardPoints += order.PointsEarned;
+                        // Cộng điểm tích lũy trọn đời xét hạng của đơn hàng vào tài khoản thành viên
                         user.AccumulatedPoints += order.PointsEarned;
                     }
                 }
 
                 // Xử lý hoàn điểm khi hủy đơn hoặc hoàn tiền
+                // TRƯỜNG HỢP 1: Đơn hàng ở trạng thái đang xử lý (1, 2, 3) bị hủy hoặc thất bại (5, 6, 7).
+                // - Đơn hàng này chưa bao giờ hoàn thành (chưa đạt trạng thái 4) nên khách chưa được cộng điểm thưởng của đơn này.
+                // - Hệ thống chỉ cần hoàn trả lại số điểm cũ mà khách đã tiêu dùng (PointsRedeemed) khi thanh toán đơn hàng này.
                 if ((newStatusId == 5 || newStatusId == 6 || newStatusId == 7) && (oldStatusId == 1 || oldStatusId == 2 || oldStatusId == 3))
                 {
                     var user = await _context.Users.FindAsync(order.UserId);
@@ -778,14 +791,23 @@ namespace ECommerce1.Services
                         user.RewardPoints += order.PointsRedeemed;
                     }
                 }
+                // TRƯỜNG HỢP 2: Đơn hàng đã giao thành công (4) nhưng sau đó bị đổi trả/hoàn tiền (7)
+                // - Vì đơn hàng đã hoàn thành trước đó nên khách đã được cộng cả điểm thưởng (RewardPoints) và điểm xét hạng (AccumulatedPoints).
+                // - Hệ thống cần:
+                //   1. Thu hồi lại số điểm thưởng mới nhận từ đơn này.
+                //   2. Thu hồi lại số điểm tích lũy xét hạng mới nhận từ đơn này.
+                //   3. Hoàn trả lại số điểm cũ mà khách đã tiêu dùng để thanh toán đơn này.
                 else if (oldStatusId == 4 && newStatusId == 7)
                 {
+                    // Thu hồi điểm tích lũy và hoàn trả điểm đã tiêu dùng (Không hoàn lại kho tồn máy mới)
                     var user = await _context.Users.FindAsync(order.UserId);
                     if (user != null)
                     {
+                        // Thu hồi lại số điểm thưởng tích lũy (RewardPoints) đã nhận trước đó khi đơn bị hủy
                         user.RewardPoints -= order.PointsEarned;
                         if (user.RewardPoints < 0) user.RewardPoints = 0;
 
+                        // Thu hồi lại số điểm tích lũy trọn đời (AccumulatedPoints) đã nhận trước đó khi đơn bị hủy
                         user.AccumulatedPoints -= order.PointsEarned;
                         if (user.AccumulatedPoints < 0) user.AccumulatedPoints = 0;
 
