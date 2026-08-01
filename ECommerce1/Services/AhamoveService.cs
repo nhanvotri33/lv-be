@@ -36,7 +36,7 @@ namespace ECommerce1.Services
 
             if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(mobile) || string.IsNullOrEmpty(baseUrl))
             {
-                throw new InvalidOperationException("Cấu hình Ahamove (ApiKey, Mobile) không hợp lệ hoặc thiếu.");
+                throw new InvalidOperationException("Cấu hình Ahamove (ApiKey, Mobile, BaseUrl) không hợp lệ hoặc thiếu.");
             }
 
             // Endpoint đăng ký/đăng nhập lấy token của Ahamove
@@ -93,10 +93,34 @@ namespace ECommerce1.Services
                 var response = await _httpClient.PostAsync(requestUrl, new FormUrlEncodedContent(postData));
                 var content = await response.Content.ReadAsStringAsync();
 
+                // Nếu token bị 401 / hết hạn -> Xóa cache token và thử lại với token mới
+                if (!response.IsSuccessStatusCode && (response.StatusCode == System.Net.HttpStatusCode.Unauthorized || content.Contains("NOT_AUTHORIZED", StringComparison.OrdinalIgnoreCase)))
+                {
+                    _memoryCache.Remove(CacheTokenKey);
+                    token = await GetTokenAsync();
+                    postData["token"] = token;
+                    response = await _httpClient.PostAsync(requestUrl, new FormUrlEncodedContent(postData));
+                    content = await response.Content.ReadAsStringAsync();
+                }
+
                 if (response.IsSuccessStatusCode)
                 {
                     using var doc = JsonDocument.Parse(content);
-                    if (doc.RootElement.TryGetProperty("total_fee", out var feeProp))
+                    var root = doc.RootElement;
+
+                    if (root.TryGetProperty("total_price", out var totalPriceProp) && totalPriceProp.GetDouble() > 0)
+                    {
+                        return (decimal)totalPriceProp.GetDouble();
+                    }
+                    if (root.TryGetProperty("subtotal_price", out var subtotalProp) && subtotalProp.GetDouble() > 0)
+                    {
+                        return (decimal)subtotalProp.GetDouble();
+                    }
+                    if (root.TryGetProperty("distance_price", out var distPriceProp) && distPriceProp.GetDouble() > 0)
+                    {
+                        return (decimal)distPriceProp.GetDouble();
+                    }
+                    if (root.TryGetProperty("total_fee", out var feeProp))
                     {
                         return (decimal)feeProp.GetDouble();
                     }
@@ -125,6 +149,7 @@ namespace ECommerce1.Services
             {
                 "SGN-BIKE" => 15000m,       // Giao Siêu Tốc: 15k cho 3km đầu
                 "SGN-EXPRESS" => 18000m,    // Siêu Tốc Tiết Kiệm: 18k cho 3km đầu
+                "SGN-2H" => 12000m,         // Giao 2H: 12k cho 3km đầu
                 "SGN-POOL" => 12000m,       // Giao 4H: 12k cho 3km đầu
                 _ => 15000m
             };
@@ -133,6 +158,7 @@ namespace ECommerce1.Services
             {
                 "SGN-BIKE" => 5000m,        // 5k mỗi km tiếp theo
                 "SGN-EXPRESS" => 4000m,     // 4k mỗi km tiếp theo
+                "SGN-2H" => 3000m,          // 3k mỗi km tiếp theo
                 "SGN-POOL" => 3000m,        // 3k mỗi km tiếp theo
                 _ => 4000m
             };
@@ -197,6 +223,15 @@ namespace ECommerce1.Services
                 var response = await _httpClient.PostAsync(requestUrl, new FormUrlEncodedContent(postData));
                 var content = await response.Content.ReadAsStringAsync();
 
+                if (!response.IsSuccessStatusCode && (response.StatusCode == System.Net.HttpStatusCode.Unauthorized || content.Contains("NOT_AUTHORIZED", StringComparison.OrdinalIgnoreCase)))
+                {
+                    _memoryCache.Remove(CacheTokenKey);
+                    token = await GetTokenAsync();
+                    postData["token"] = token;
+                    response = await _httpClient.PostAsync(requestUrl, new FormUrlEncodedContent(postData));
+                    content = await response.Content.ReadAsStringAsync();
+                }
+
                 if (response.IsSuccessStatusCode)
                 {
                     using var doc = JsonDocument.Parse(content);
@@ -240,6 +275,7 @@ namespace ECommerce1.Services
                 {
                     "SGN-BIKE" => 34000m,
                     "SGN-EXPRESS" => 36000m,
+                    "SGN-2H" => 30000m,
                     _ => 25000m
                 }
             };

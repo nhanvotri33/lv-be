@@ -3,6 +3,8 @@ using ECommerce1.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace ECommerce1.Controllers
@@ -43,9 +45,9 @@ namespace ECommerce1.Controllers
             // 1. Tính phí Siêu tốc (Ahamove) nếu có tọa độ (Thêm vào đầu để làm tùy chọn nổi bật)
             // LƯU Ý: Kho hàng của chúng ta ở Quận 8, TP.HCM, nên Ahamove CHỈ có thể giao trong khu vực TP.HCM.
             string dbProvinceName = dbWard.Province?.Name ?? "";
-
+            
             // Nếu địa chỉ thuộc TP.HCM mà chưa có tọa độ Lat/Lng từ FE gửi lên, sử dụng tọa độ mặc định trung tâm TP.HCM để ước tính phí Ahamove
-            bool isHcm = dbProvinceName.Contains("Hồ Chí Minh", StringComparison.OrdinalIgnoreCase) ||
+            bool isHcm = dbProvinceName.Contains("Hồ Chí Minh", StringComparison.OrdinalIgnoreCase) || 
                          dbProvinceName.Contains("HCM", StringComparison.OrdinalIgnoreCase);
 
             if (isHcm)
@@ -56,29 +58,29 @@ namespace ECommerce1.Controllers
                     double destLng = request.Longitude.HasValue && request.Longitude.Value != 0 ? request.Longitude.Value : 106.701139;
 
                     string wardName = dbWard.Name ?? "";
-                    string destAddress = string.IsNullOrWhiteSpace(request.AddressLine)
+                    string destAddress = string.IsNullOrWhiteSpace(request.AddressLine) 
                         ? $"{wardName}, {dbProvinceName}"
                         : $"{request.AddressLine}, {wardName}, {dbProvinceName}";
 
                     // Danh sách các dịch vụ Ahamove cung cấp tại Sài Gòn
-                    var ahamoveServices = new[]
+                    var ahamoveServices = new[] 
                     {
                         new { Id = "SGN-BIKE", Name = "Ahamove (Giao Siêu Tốc)", Days = "Trong vòng 1-2 giờ" },
                         new { Id = "SGN-EXPRESS", Name = "Ahamove (Siêu Tốc - Tiết Kiệm)", Days = "Trong vòng 2-4 giờ" },
-                        new { Id = "SGN-POOL", Name = "Ahamove (Giao 4H)", Days = "Tối đa 4 giờ" }
+                        new { Id = "SGN-2H", Name = "Ahamove (Giao 2H - Tiết Kiệm)", Days = "Trong vòng 2 giờ" }
                     };
 
-                    var ahamoveTasks = ahamoveServices.Select(async s =>
+                    var ahamoveTasks = ahamoveServices.Select(async s => 
                     {
-                        try
+                        try 
                         {
                             decimal fee = await _ahamoveService.EstimateFeeAsync(destLat, destLng, destAddress, s.Id);
                             return new ShippingOption { Fee = fee, Carrier = s.Name, EstimatedDeliveryDays = s.Days };
                         }
-                        catch
-                        {
-                            // Nếu service này không khả dụng cho tuyến đường, bỏ qua
-                            return null;
+                        catch (Exception ex)
+                        { 
+                            Console.WriteLine($"Lỗi khi gọi dịch vụ Ahamove ({s.Id}): {ex.Message}");
+                            return null; 
                         }
                     });
 
@@ -96,9 +98,9 @@ namespace ECommerce1.Controllers
 
             // 2. Tính phí Tiêu chuẩn (Giao Hàng Nhanh / Tiết Kiệm)
             decimal standardBaseFee = 35000;
-
-            if (dbProvinceName.Contains("Hồ Chí Minh", StringComparison.OrdinalIgnoreCase) ||
-                dbProvinceName.Contains("Hà Nội", StringComparison.OrdinalIgnoreCase) ||
+            
+            if (dbProvinceName.Contains("Hồ Chí Minh", StringComparison.OrdinalIgnoreCase) || 
+                dbProvinceName.Contains("Hà Nội", StringComparison.OrdinalIgnoreCase) || 
                 dbProvinceName.Contains("Đà Nẵng", StringComparison.OrdinalIgnoreCase))
             {
                 standardBaseFee = 22000;
