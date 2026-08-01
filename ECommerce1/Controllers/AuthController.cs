@@ -207,9 +207,16 @@ namespace ECommerce1.Controllers
         [HttpPost("forgot-password")]
         public async Task<IActionResult> ForgotPassword([FromBody] ECommerce1.DTOs.Auth.ForgotPasswordRequest request)
         {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
+            if (string.IsNullOrWhiteSpace(request.Email))
+                return BadRequest("Vui lòng nhập Email hoặc Tên đăng nhập.");
+
+            string inputVal = request.Email.Trim();
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == inputVal || u.Username == inputVal);
             if (user == null)
-                return BadRequest("Không tìm thấy tài khoản với email này.");
+                return BadRequest("Không tìm thấy tài khoản với thông tin này.");
+
+            if (string.IsNullOrWhiteSpace(user.Email))
+                return BadRequest("Tài khoản chưa đăng ký Email nhận mã.");
 
             // Tạo mã OTP ngẫu nhiên 6 số
             var otp = new Random().Next(100000, 999999).ToString();
@@ -220,30 +227,41 @@ namespace ECommerce1.Controllers
 
             string subject = "PhoneStore - Mã xác nhận cấp lại mật khẩu";
             string body = $@"
-                <h3>Xin chào {user.Username},</h3>
-                <p>Bạn đã yêu cầu cấp lại mật khẩu. Vui lòng sử dụng mã xác nhận (OTP) sau để đặt lại mật khẩu của bạn:</p>
-                <h2 style='color: blue;'>{otp}</h2>
-                <p>Mã này sẽ hết hạn trong vòng 15 phút.</p>
-                <p>Nếu bạn không yêu cầu đổi mật khẩu, vui lòng bỏ qua email này.</p>
+                <div style='font-family: Arial, sans-serif; max-width: 500px; margin: auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;'>
+                    <h2 style='color: #1a73e8; text-align: center;'>PhoneStore</h2>
+                    <h3 style='color: #333;'>Xin chào <b>{user.Username}</b>,</h3>
+                    <p>Bạn đã gửi yêu cầu cấp lại mật khẩu cho tài khoản tại PhoneStore.</p>
+                    <p>Vui lòng sử dụng mã xác nhận (OTP) bên dưới để tiến hành đổi mật khẩu:</p>
+                    <div style='text-align: center; margin: 20px 0;'>
+                        <span style='font-size: 28px; font-weight: bold; color: #1a73e8; background: #e8f0fe; padding: 10px 24px; border-radius: 6px; letter-spacing: 4px;'>{otp}</span>
+                    </div>
+                    <p style='color: #666; font-size: 13px;'>Mã này có hiệu lực trong vòng <b>15 phút</b>. Nếu bạn không gửi yêu cầu này, vui lòng bỏ qua email.</p>
+                    <hr style='border: 0; border-top: 1px solid #eee; margin: 20px 0;'/>
+                    <p style='font-size: 11px; color: #999; text-align: center;'>Trân trọng,<br/>Đội ngũ PhoneStore</p>
+                </div>
             ";
 
             await _emailService.SendEmailAsync(user.Email, subject, body);
 
-            return Ok("Mã xác nhận (OTP) đã được gửi đến email của bạn.");
+            return Ok(new { message = "Mã xác nhận (OTP) đã được gửi đến email của bạn.", email = user.Email });
         }
 
         [HttpPost("reset-password")]
         public async Task<IActionResult> ResetPassword([FromBody] ECommerce1.DTOs.Auth.ResetPasswordRequest request)
         {
-            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
+            if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Otp) || string.IsNullOrWhiteSpace(request.NewPassword))
+                return BadRequest("Vui lòng cung cấp đầy đủ Email, Mã OTP và Mật khẩu mới.");
+
+            string inputVal = request.Email.Trim();
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == inputVal || u.Username == inputVal);
             if (user == null)
-                return BadRequest("Email không hợp lệ.");
+                return BadRequest("Tài khoản không tồn tại.");
 
-            if (user.ResetPasswordToken != request.Otp)
-                return BadRequest("Mã xác nhận không chính xác.");
+            if (user.ResetPasswordToken != request.Otp.Trim())
+                return BadRequest("Mã xác nhận (OTP) không chính xác.");
 
-            if (user.ResetPasswordTokenExpiry < DateTime.UtcNow)
-                return BadRequest("Mã xác nhận đã hết hạn. Vui lòng yêu cầu mã mới.");
+            if (!user.ResetPasswordTokenExpiry.HasValue || user.ResetPasswordTokenExpiry.Value < DateTime.UtcNow)
+                return BadRequest("Mã xác nhận (OTP) đã hết hạn. Vui lòng yêu cầu gửi lại mã mới.");
 
             var hasher = new Microsoft.AspNetCore.Identity.PasswordHasher<User>();
             user.PasswordHash = hasher.HashPassword(user, request.NewPassword);
@@ -255,7 +273,7 @@ namespace ECommerce1.Controllers
 
             await _context.SaveChangesAsync();
 
-            return Ok("Đặt lại mật khẩu thành công. Bạn có thể đăng nhập bằng mật khẩu mới.");
+            return Ok(new { message = "Đặt lại mật khẩu thành công. Bạn có thể đăng nhập bằng mật khẩu mới." });
         }
     }
 }
