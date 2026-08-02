@@ -31,5 +31,20 @@ namespace ECommerce.Models
         public virtual OrderItem? ParentOrderItem { get; set; }
 
         public bool IsAddon { get; set; } = false;
+
+        // Bổ sung các thông tin bảo hành và trạng thái thẩm định
+        public int? WarrantyId { get; set; }
+        [ForeignKey("WarrantyId")]
+        public virtual Warranty? Warranty { get; set; }
+
+        public decimal WarrantyPrice { get; set; } = 0;
+
+        public int? CustomerDeviceId { get; set; }
+        [ForeignKey("CustomerDeviceId")]
+        public virtual CustomerDevice? CustomerDevice { get; set; }
+
+        [Required]
+        [StringLength(50)]
+        public string InspectionStatus { get; set; } = "NOT_REQUIRED";
     }
 }

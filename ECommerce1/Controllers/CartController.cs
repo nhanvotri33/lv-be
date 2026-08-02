@@ -37,6 +37,8 @@ namespace ECommerce1.Controllers
                 .Include(c => c.CartItems)
                     .ThenInclude(ci => ci.ProductVariant)
                         .ThenInclude(pv => pv.Product)
+                .Include(c => c.CartItems)
+                    .ThenInclude(ci => ci.Warranty)
                 .FirstOrDefaultAsync(c => c.UserId == userId);
 
             // Nếu user chưa có giỏ hàng, tự động tạo mới
@@ -125,7 +127,10 @@ namespace ECommerce1.Controllers
                     Quantity = item.Quantity,
                     AppliedCampaignId = item.AppliedCampaignId,
                     ParentCartItemId = item.ParentCartItemId,
-                    IsAddon = item.IsAddon
+                    IsAddon = item.IsAddon,
+                    WarrantyId = item.WarrantyId,
+                    WarrantyName = item.Warranty?.Name,
+                    WarrantyPrice = item.Warranty?.BasePrice ?? 0
                 });
             }
 
@@ -213,7 +218,8 @@ namespace ECommerce1.Controllers
                         Quantity = item.Quantity,
                         AppliedCampaignId = item.AppliedCampaignId,
                         ParentCartItemId = item.ParentCartItemId,
-                        IsAddon = item.IsAddon
+                        IsAddon = item.IsAddon,
+                        WarrantyId = item.WarrantyId
                     };
                     _context.CartItems.Add(cartItem);
                 }
@@ -233,5 +239,6 @@ namespace ECommerce1.Controllers
         public int? AppliedCampaignId { get; set; }
         public int? ParentCartItemId { get; set; }
         public bool IsAddon { get; set; } = false;
+        public int? WarrantyId { get; set; }
     }
 }
