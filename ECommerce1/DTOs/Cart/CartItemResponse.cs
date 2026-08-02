@@ -14,5 +14,10 @@ namespace ECommerce1.DTOs.Cart
         public int? AppliedCampaignId { get; set; }
         public int? ParentCartItemId { get; set; }
         public bool IsAddon { get; set; }
+
+        // Trường thông tin bổ sung cho bảo hành đi kèm
+        public int? WarrantyId { get; set; }
+        public string? WarrantyName { get; set; }
+        public decimal WarrantyPrice { get; set; } = 0;
     }
 }

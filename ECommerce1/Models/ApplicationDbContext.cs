@@ -50,6 +50,9 @@ namespace ECommerce.Models
         public DbSet<PromotionCampaign> PromotionCampaigns { get; set; }
         public DbSet<CampaignMainProductRule> CampaignMainProductRules { get; set; }
         public DbSet<CampaignAddonProductRule> CampaignAddonProductRules { get; set; }
+        public DbSet<Warranty> Warranties { get; set; }
+        public DbSet<WarrantyPackageRule> WarrantyPackageRules { get; set; }
+        public DbSet<CustomerDevice> CustomerDevices { get; set; }
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
             if (!optionsBuilder.IsConfigured)
@@ -219,6 +222,67 @@ namespace ECommerce.Models
                 .HasOne(p => p.Order)
                 .WithMany()
                 .HasForeignKey(p => p.OrderId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            // Cấu hình Precision cho phần Bảo hành
+            modelBuilder.Entity<Warranty>().Property(w => w.BasePrice).HasColumnType("decimal(18,2)");
+            modelBuilder.Entity<WarrantyPackageRule>().Property(wr => wr.MinPrice).HasColumnType("decimal(18,2)");
+            modelBuilder.Entity<WarrantyPackageRule>().Property(wr => wr.MaxPrice).HasColumnType("decimal(18,2)");
+            modelBuilder.Entity<OrderItem>().Property(oi => oi.WarrantyPrice).HasColumnType("decimal(18,2)");
+
+            // Cấu hình các Khóa ngoại liên quan để tránh vòng Cascade trong SQL Server
+            modelBuilder.Entity<WarrantyPackageRule>(entity =>
+            {
+                entity.HasOne(wr => wr.Warranty)
+                      .WithMany()
+                      .HasForeignKey(wr => wr.WarrantyId)
+                      .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(wr => wr.Product)
+                      .WithMany()
+                      .HasForeignKey(wr => wr.ProductId)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(wr => wr.Category)
+                      .WithMany()
+                      .HasForeignKey(wr => wr.CategoryId)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(wr => wr.Brand)
+                      .WithMany()
+                      .HasForeignKey(wr => wr.BrandId)
+                      .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<CustomerDevice>(entity =>
+            {
+                entity.HasOne(cd => cd.User)
+                      .WithMany()
+                      .HasForeignKey(cd => cd.UserId)
+                      .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(cd => cd.ProductVariant)
+                      .WithMany()
+                      .HasForeignKey(cd => cd.VariantId)
+                      .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<CartItem>()
+                .HasOne(ci => ci.Warranty)
+                .WithMany()
+                .HasForeignKey(ci => ci.WarrantyId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<OrderItem>()
+                .HasOne(oi => oi.Warranty)
+                .WithMany()
+                .HasForeignKey(oi => oi.WarrantyId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<OrderItem>()
+                .HasOne(oi => oi.CustomerDevice)
+                .WithMany()
+                .HasForeignKey(oi => oi.CustomerDeviceId)
                 .OnDelete(DeleteBehavior.Restrict);
         }
 

@@ -28,5 +28,10 @@ namespace ECommerce.Models
         public virtual CartItem? ParentCartItem { get; set; }
 
         public bool IsAddon { get; set; } = false;
+
+        // Bổ sung thông tin gói bảo hành mua kèm sản phẩm
+        public int? WarrantyId { get; set; }
+        [ForeignKey("WarrantyId")]
+        public virtual Warranty? Warranty { get; set; }
     }
 }

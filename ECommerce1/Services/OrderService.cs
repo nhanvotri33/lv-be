@@ -32,6 +32,10 @@ namespace ECommerce1.Services
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.ProductVariant)
                         .ThenInclude(pv => pv.Product)
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Warranty)
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.CustomerDevice)
                 .Include(o => o.Promotion)
                 .Include(o => o.OrderStatus)
                 .Where(o => o.UserId == userId)
@@ -67,7 +71,14 @@ namespace ECommerce1.Services
                         ProductName = oi.ProductVariant != null && oi.ProductVariant.Product != null ? oi.ProductVariant.Product.Name : "Sản phẩm không rõ",
                         VariantName = oi.ProductVariant != null ? oi.ProductVariant.Name : "Biến thể không rõ",
                         Quantity = oi.Quantity,
-                        PriceAtPurchase = oi.PriceAtPurchase
+                        PriceAtPurchase = oi.PriceAtPurchase,
+                        WarrantyId = oi.WarrantyId,
+                        WarrantyName = oi.Warranty != null ? oi.Warranty.Name : null,
+                        WarrantyPrice = oi.WarrantyPrice,
+                        CustomerDeviceId = oi.CustomerDeviceId,
+                        ImeiOrSerial = oi.CustomerDevice != null ? oi.CustomerDevice.ImeiOrSerial : null,
+                        CustomerDeviceProductName = oi.CustomerDevice != null ? oi.CustomerDevice.ProductName : null,
+                        InspectionStatus = oi.InspectionStatus
                     }).ToList()
                 })
                 .ToListAsync();
@@ -79,6 +90,10 @@ namespace ECommerce1.Services
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.ProductVariant)
                         .ThenInclude(pv => pv.Product)
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Warranty)
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.CustomerDevice)
                 .Include(o => o.Promotion)
                 .Include(o => o.OrderStatus)
                 .OrderByDescending(o => o.CreatedAt)
@@ -113,7 +128,14 @@ namespace ECommerce1.Services
                         ProductName = oi.ProductVariant != null && oi.ProductVariant.Product != null ? oi.ProductVariant.Product.Name : "Sản phẩm không rõ",
                         VariantName = oi.ProductVariant != null ? oi.ProductVariant.Name : "Biến thể không rõ",
                         Quantity = oi.Quantity,
-                        PriceAtPurchase = oi.PriceAtPurchase
+                        PriceAtPurchase = oi.PriceAtPurchase,
+                        WarrantyId = oi.WarrantyId,
+                        WarrantyName = oi.Warranty != null ? oi.Warranty.Name : null,
+                        WarrantyPrice = oi.WarrantyPrice,
+                        CustomerDeviceId = oi.CustomerDeviceId,
+                        ImeiOrSerial = oi.CustomerDevice != null ? oi.CustomerDevice.ImeiOrSerial : null,
+                        CustomerDeviceProductName = oi.CustomerDevice != null ? oi.CustomerDevice.ProductName : null,
+                        InspectionStatus = oi.InspectionStatus
                     }).ToList()
                 })
                 .ToListAsync();
@@ -140,6 +162,8 @@ namespace ECommerce1.Services
                     .Include(c => c.CartItems)
                         .ThenInclude(ci => ci.ProductVariant)
                             .ThenInclude(pv => pv.Product)
+                    .Include(c => c.CartItems)
+                        .ThenInclude(ci => ci.Warranty)
                     .FirstOrDefaultAsync(c => c.UserId == userId);
 
                 if (cart == null || cart.CartItems == null || !cart.CartItems.Any())
@@ -259,6 +283,11 @@ namespace ECommerce1.Services
                     }
                     calculatedPrices[item.Id] = price;
                     subTotal += price * item.Quantity;
+                    // Cộng thêm giá gói bảo hành đi kèm (nếu có)
+                    if (item.WarrantyId.HasValue && item.Warranty != null)
+                    {
+                        subTotal += item.Warranty.BasePrice * item.Quantity;
+                    }
                 }
 
                 decimal discountValue = 0;
@@ -480,8 +509,10 @@ namespace ECommerce1.Services
                         PriceAtPurchase = finalItemPrice,
                         AppliedCampaignId = item.AppliedCampaignId,
                         CampaignDiscountAmount = comboDiscountAmt,
-                        IsAddon = item.IsAddon
-                        // ParentOrderItemId sẽ map ở bước sau
+                        IsAddon = item.IsAddon,
+                        WarrantyId = item.WarrantyId,
+                        WarrantyPrice = item.Warranty != null ? item.Warranty.BasePrice : 0,
+                        InspectionStatus = "NOT_REQUIRED" // Đơn mua kèm máy tại shop mặc định đạt chuẩn
                     };
                     _context.OrderItems.Add(orderItem);
                     orderItemMap[item.Id] = orderItem;
@@ -866,6 +897,10 @@ namespace ECommerce1.Services
                 .Include(o => o.OrderItems)
                     .ThenInclude(oi => oi.ProductVariant)
                         .ThenInclude(pv => pv.Product)
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.Warranty)
+                .Include(o => o.OrderItems)
+                    .ThenInclude(oi => oi.CustomerDevice)
                 .Include(o => o.Promotion)
                 .Include(o => o.OrderStatus)
                 .FirstOrDefaultAsync(o => o.Id == id && o.ReceiverPhone == phoneNumber.Trim());
@@ -904,7 +939,14 @@ namespace ECommerce1.Services
                     ProductName = oi.ProductVariant != null && oi.ProductVariant.Product != null ? oi.ProductVariant.Product.Name : "Sản phẩm không rõ",
                     VariantName = oi.ProductVariant != null ? oi.ProductVariant.Name : "Biến thể không rõ",
                     Quantity = oi.Quantity,
-                    PriceAtPurchase = oi.PriceAtPurchase
+                    PriceAtPurchase = oi.PriceAtPurchase,
+                    WarrantyId = oi.WarrantyId,
+                    WarrantyName = oi.Warranty != null ? oi.Warranty.Name : null,
+                    WarrantyPrice = oi.WarrantyPrice,
+                    CustomerDeviceId = oi.CustomerDeviceId,
+                    ImeiOrSerial = oi.CustomerDevice != null ? oi.CustomerDevice.ImeiOrSerial : null,
+                    CustomerDeviceProductName = oi.CustomerDevice != null ? oi.CustomerDevice.ProductName : null,
+                    InspectionStatus = oi.InspectionStatus
                 }).ToList()
             };
         }
