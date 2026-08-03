@@ -5,6 +5,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using Microsoft.OpenApi.Models;
 using ECommerce1.Services;
+using ECommerce1.Services.Ai;
 
 // Cấu hình hiển thị tiếng Việt có dấu trên màn hình Console của Windows
 Console.OutputEncoding = System.Text.Encoding.UTF8;
@@ -83,7 +84,10 @@ builder.Services.AddScoped<IOrderService, OrderService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 builder.Services.AddScoped<ECommerce1.Services.Payment.IPaymentProvider, ECommerce1.Services.Payment.StripePaymentProvider>();
+builder.Services.AddScoped<ECommerce1.Services.Payment.IPaymentProvider, ECommerce1.Services.Payment.VnPayPaymentProvider>();
 builder.Services.AddScoped<ECommerce1.Services.Payment.IPaymentProvider, ECommerce1.Services.Payment.MomoPaymentProvider>();
+builder.Services.Configure<AiOptions>(builder.Configuration.GetSection("Ai"));
+builder.Services.AddHttpClient<IAiService, ChatCompletionAiService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient<IAhamoveService, AhamoveService>();

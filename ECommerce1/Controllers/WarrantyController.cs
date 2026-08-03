@@ -41,7 +41,16 @@ namespace ECommerce1.Controllers
             // Lấy danh sách ID danh mục tổ tiên
             var ancestorCatIds = await GetAncestorCategoryIds(variant.Product.CategoryId);
 
-            // Truy vấn gói bảo hành theo quy tắc cấu hình
+            // ================= LUỒNG TRUY VẤN GÓI BẢO HÀNH THỎA MÃN QUY TẮC RÀNG BUỘC =================
+            // Hệ thống thực hiện truy vấn các gói bảo hành thỏa mãn đồng thời các điều kiện sau:
+            // 1. Gói bảo hành phải đang ở trạng thái kích hoạt (IsActive = true).
+            // 2. Gói bảo hành đó phải có ít nhất một quy tắc (WarrantyPackageRules) khớp với sản phẩm hiện tại:
+            //    - Ràng buộc Hãng (BrandId): Nếu r.BrandId bằng NULL (không chọn) -> Áp dụng cho mọi hãng sản xuất. Nếu có giá trị -> bắt buộc trùng với BrandId của sản phẩm.
+            //    - Ràng buộc Danh mục (CategoryId): Nếu r.CategoryId bằng NULL (không chọn) -> Áp dụng cho mọi danh mục. Nếu có giá trị -> bắt buộc danh mục đó hoặc danh mục cha của nó (ancestorCatIds) trùng khớp.
+            //    - Ràng buộc Sản phẩm (ProductId): Nếu r.ProductId bằng NULL (không chọn) -> Áp dụng cho mọi sản phẩm. Nếu có giá trị -> chỉ áp dụng riêng cho sản phẩm đó (ví dụ: chỉ cho S24+).
+            //    - Ràng buộc Tầm giá máy (MinPrice & MaxPrice): Giá bán hiện tại của biến thể (variant.Price) phải nằm trong khoảng [r.MinPrice, r.MaxPrice].
+            //      + Nếu không nhập MaxPrice (NULL) -> không giới hạn giá tối đa.
+            //      + Nếu MinPrice bằng 0 -> áp dụng từ giá trị nhỏ nhất.
             var warranties = await _context.Warranties
                 .Where(w => w.IsActive)
                 .Where(w => _context.WarrantyPackageRules.Any(r =>
