@@ -5,7 +5,9 @@
 
 # Secrets and developer settings
 ECommerce1/appsettings.Development.json
+ECommerce1/appsettings.json
 .env
 .env.development
 .env.production
 *.env
+

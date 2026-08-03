@@ -94,6 +94,31 @@ namespace ECommerce1.Controllers
         {
             var packages = await _context.Warranties
                 .OrderByDescending(w => w.Id)
+                .Select(w => new
+                {
+                    w.Id,
+                    w.Code,
+                    w.Name,
+                    w.Description,
+                    w.TermsHtml,
+                    w.DurationMonths,
+                    w.BasePrice,
+                    w.RequiresInspection,
+                    w.IsActive,
+                    w.CreatedAt,
+                    w.UpdatedAt,
+                    Rules = _context.WarrantyPackageRules
+                        .Where(r => r.WarrantyId == w.Id)
+                        .Select(r => new
+                        {
+                            r.BrandId,
+                            r.CategoryId,
+                            r.ProductId,
+                            r.MinPrice,
+                            r.MaxPrice
+                        })
+                        .FirstOrDefault()
+                })
                 .ToListAsync();
             return Ok(packages);
         }
@@ -129,15 +154,19 @@ namespace ECommerce1.Controllers
                 _context.Warranties.Add(warranty);
                 await _context.SaveChangesAsync();
 
-                // Tự động tạo rule toàn cầu cho gói này (áp dụng cho mọi dòng máy)
+                // Tạo rule từ thông tin gửi lên
+                // LOGIC CẤU HÌNH QUY TẮC RÀNG BUỘC KHI LƯU:
+                // - ProductId = null, CategoryId = null, BrandId = null -> Không có bất kỳ ràng buộc nào về máy/danh mục/hãng (áp dụng toàn cầu).
+                // - Nếu chọn cụ thể (khác null) -> Chỉ kích hoạt khi thông tin biến thể máy khớp với ID được chọn.
+                // - MinPrice mặc định là 0 (nếu bỏ trống), MaxPrice = null -> Không giới hạn khoảng giá máy tối đa.
                 var rule = new WarrantyPackageRule
                 {
                     WarrantyId = warranty.Id,
-                    ProductId = null,
-                    CategoryId = null,
-                    BrandId = null,
-                    MinPrice = 0,
-                    MaxPrice = null
+                    ProductId = request.Rules?.ProductId,
+                    CategoryId = request.Rules?.CategoryId,
+                    BrandId = request.Rules?.BrandId,
+                    MinPrice = request.Rules?.MinPrice ?? 0,
+                    MaxPrice = request.Rules?.MaxPrice
                 };
                 _context.WarrantyPackageRules.Add(rule);
                 await _context.SaveChangesAsync();
@@ -164,6 +193,7 @@ namespace ECommerce1.Controllers
             if (warranty == null)
                 return NotFound(new { message = "Không tìm thấy gói bảo hành." });
 
+            using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
                 warranty.Name = request.Name;
@@ -175,11 +205,29 @@ namespace ECommerce1.Controllers
                 warranty.IsActive = request.IsActive;
                 warranty.UpdatedAt = DateTime.UtcNow;
 
+                // Cập nhật hoặc tạo rule liên kết
+                // LOGIC CẬP NHẬT QUY TẮC RÀNG BUỘC KHI SỬA GÓI:
+                // - Nếu admin bỏ chọn (chọn "Tất cả...") -> ID tương ứng lưu NULL vào database.
+                // - MinPrice & MaxPrice được cập nhật theo số lượng VNĐ thực tế từ FE gửi lên.
+                var rule = await _context.WarrantyPackageRules.FirstOrDefaultAsync(r => r.WarrantyId == id);
+                if (rule == null)
+                {
+                    rule = new WarrantyPackageRule { WarrantyId = id };
+                    _context.WarrantyPackageRules.Add(rule);
+                }
+                rule.ProductId = request.Rules?.ProductId;
+                rule.BrandId = request.Rules?.BrandId;
+                rule.CategoryId = request.Rules?.CategoryId;
+                rule.MinPrice = request.Rules?.MinPrice ?? 0;
+                rule.MaxPrice = request.Rules?.MaxPrice;
+
                 await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
                 return Ok(warranty);
             }
             catch (Exception ex)
             {
+                await transaction.RollbackAsync();
                 return BadRequest(new { message = "Lỗi khi cập nhật gói bảo hành: " + ex.Message });
             }
         }
@@ -229,6 +277,7 @@ namespace ECommerce1.Controllers
         public decimal BasePrice { get; set; }
         public bool RequiresInspection { get; set; }
         public bool IsActive { get; set; } = true;
+        public WarrantyRulePayload? Rules { get; set; }
     }
 
     public class UpdateWarrantyRequest
@@ -240,5 +289,15 @@ namespace ECommerce1.Controllers
         public decimal BasePrice { get; set; }
         public bool RequiresInspection { get; set; }
         public bool IsActive { get; set; }
+        public WarrantyRulePayload? Rules { get; set; }
+    }
+
+    public class WarrantyRulePayload
+    {
+        public int? BrandId { get; set; }
+        public int? CategoryId { get; set; }
+        public int? ProductId { get; set; }
+        public decimal MinPrice { get; set; } = 0;
+        public decimal? MaxPrice { get; set; }
     }
 }
