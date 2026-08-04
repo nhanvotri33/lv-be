@@ -10,15 +10,29 @@ using ECommerce1.Services.Ai;
 // Cấu hình hiển thị tiếng Việt có dấu trên màn hình Console của Windows
 Console.OutputEncoding = System.Text.Encoding.UTF8;
 
-// Tự động tải các biến môi trường từ file .env nếu có (hỗ trợ cả ở thư mục gốc hoặc wwwroot)
-var envPaths = new[] {
-    Path.Combine(Directory.GetCurrentDirectory(), ".env"),
-    Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", ".env")
-};
+// Tự động tải các biến môi trường từ file .env nếu có.
+// Tìm từ cả thư mục làm việc hiện tại lẫn thư mục chứa file .exe, rồi đi ngược lên các thư mục cha,
+// để chạy được cả khi `dotnet run` (cwd = thư mục project) lẫn khi chạy trực tiếp bin\Debug\net6.0\ECommerce1.exe
+static IEnumerable<string> GetEnvFileCandidates()
+{
+    var roots = new[] { Directory.GetCurrentDirectory(), AppContext.BaseDirectory };
+    foreach (var root in roots)
+    {
+        var dir = new DirectoryInfo(root);
+        for (var i = 0; i < 5 && dir != null; i++, dir = dir.Parent)
+        {
+            yield return Path.Combine(dir.FullName, ".env");
+            yield return Path.Combine(dir.FullName, "wwwroot", ".env");
+        }
+    }
+}
+
+var envPaths = GetEnvFileCandidates();
 foreach (var path in envPaths)
 {
     if (File.Exists(path))
     {
+        Console.WriteLine($"[Config] Đã nạp biến môi trường từ: {path}");
         foreach (var line in File.ReadAllLines(path))
         {
             if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#")) continue;
