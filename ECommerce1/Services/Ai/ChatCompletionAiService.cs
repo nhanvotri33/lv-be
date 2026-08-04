@@ -49,7 +49,7 @@ namespace ECommerce1.Services.Ai
             _httpClient.Timeout = TimeSpan.FromSeconds(Math.Clamp(_options.TimeoutSeconds, 5, 120));
         }
 
-        public bool IsConfigured => !string.IsNullOrWhiteSpace(_options.ApiKey);
+        public bool IsConfigured => !string.IsNullOrWhiteSpace(_options.ApiKey) && _options.ApiKey != "YOUR_OPENAI_API_KEY";
 
         public async Task<string> ChatAsync(string userMessage, IReadOnlyList<ChatMessageDto> history, string productContext, CancellationToken cancellationToken = default)
         {
@@ -83,20 +83,56 @@ namespace ECommerce1.Services.Ai
 
             return await SendChatCompletionAsync(messages, temperature: 0.35, cancellationToken);
         }
+        // DANH SÁCH TỪ CẤM / THÔ TỤC / KHIẾU NẠI DỊCH VỤ KÉM (Bộ lọc nhanh tại Backend)
+        private static readonly string[] BadWords = new[]
+        {
+            "đm", "dm", "dmm", "đmm", "vcl", "vl", "buồi", "buoi", "cặc", "cac", "lồn", "lon", "địt", "dit", "đéo", "deo", "quần què", "qq", "cức",
+            "dởm", "dom", "vòng vo", "vong vo", "lừa đảo", "lua dao", "chảnh", "chanh", "tệ", "te", "kém", "kem", "lừa"
+        };
 
+        /// <summary>
+        /// KIỂM DUYỆT BÌNH LUẬN (QUY TRÌNH LAI AI + FILTER):
+        /// 1. Tầng 1 (Local Filter): Kiểm tra xem bình luận có chứa từ cấm thô tục không.
+        ///    - Nếu CHỨA từ cấm => Trả về IsAllowed = false (Gửi vào CHỜ DUYỆT ngay lập tức).
+        /// 2. Tầng 2 (AI Moderation): Nếu sạch sẽ, gửi tới OpenAI API để AI phân tích ngữ cảnh.
+        ///    - AI trả về JSON: {"isAllowed": true/false, "reason": "..."}
+        /// 3. Dự phòng (Fallback): Nếu AI bị ngắt kết nối hoặc chưa cài Key, đối với các câu sạch sẽ không có từ cấm
+        ///    hệ thống sẽ tự động duyệt bình thường (IsAllowed = true) để tránh làm gián đoạn trải nghiệm người dùng.
+        /// </summary>
         public async Task<ReviewModerationResult> ModerateReviewAsync(string comment, CancellationToken cancellationToken = default)
         {
-            if (!IsConfigured || string.IsNullOrWhiteSpace(comment))
+            if (string.IsNullOrWhiteSpace(comment))
             {
                 return new ReviewModerationResult { IsAllowed = true };
             }
 
+            // TẦNG 1: Lọc từ cấm thủ công bằng danh sách từ vựng local
+            var lowerComment = comment.ToLowerInvariant();
+            if (BadWords.Any(word => lowerComment.Contains(word)))
+            {
+                return new ReviewModerationResult { IsAllowed = false, Reason = "Chứa từ ngữ thô tục" };
+            }
+
+            // TẦNG 2: Nếu chưa cấu hình API Key AI mà bài viết không dính từ cấm -> Tự động cho phép duyệt
+            if (!IsConfigured)
+            {
+                return new ReviewModerationResult { IsAllowed = true };
+            }
+
+            // Gửi toàn bộ bình luận cho AI phân tích kỹ ngữ cảnh 100%
             var messages = new List<object>
             {
                 new
                 {
                     role = "system",
-                    content = "Bạn là bộ kiểm duyệt bình luận thương mại điện tử. Chỉ trả JSON hợp lệ dạng {\"isAllowed\":true|false,\"reason\":\"...\"}. Từ chối nếu có chửi tục nặng, thù ghét, đe dọa, spam, quảng cáo, thông tin cá nhân nhạy cảm, nội dung tình dục, lừa đảo hoặc xúc phạm người khác. Cho phép đánh giá tiêu cực lịch sự về sản phẩm/dịch vụ."
+                    content = "Bạn là hệ thống kiểm duyệt bình luận thương mại điện tử AI tự động. Hãy phân tích kỹ nội dung bình luận của người dùng.\n" +
+                              "QUY TẮC KIỂM DUYỆT BẮT BUỘC:\n" +
+                              "1. BẠN PHẢI TỪ CHỐI (isAllowed: false) để gửi về trang Admin kiểm duyệt thủ công nếu bình luận rơi vào các trường hợp:\n" +
+                              "   - Chứa từ ngữ thô tục, chửi thề, xúc phạm cá nhân, thù ghét, đe dọa, spam, quảng cáo rác.\n" +
+                              "   - Có nội dung chê bai tiêu cực, khiếu nại sản phẩm lỗi, hỏng, dởm.\n" +
+                              "   - Có nội dung phản ánh thái độ phục vụ của nhân viên, dịch vụ bảo hành kém, nhân viên vòng vo, hoặc bức xúc dịch vụ.\n" +
+                              "2. BẠN CHỈ CHO PHÉP (isAllowed: true) đối với các bình luận hoàn toàn tích cực, lịch sự, khen ngợi sản phẩm/dịch vụ.\n" +
+                              "Trả về DUY NHẤT một chuỗi JSON hợp lệ dạng: {\"isAllowed\": false, \"reason\": \"lý do cụ thể\"} hoặc {\"isAllowed\": true, \"reason\": \"Hợp lệ\"}."
                 },
                 new { role = "user", content = comment.Trim() }
             };
@@ -108,8 +144,9 @@ namespace ECommerce1.Services.Ai
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "AI review moderation failed. Review will be accepted for availability.");
-                return new ReviewModerationResult { IsAllowed = true, Reason = "AI moderation unavailable" };
+                _logger.LogWarning(ex, "AI review moderation failed. Accepting normal review as fallback.");
+                // Trường hợp AI gặp sự cố kỹ thuật nhưng bài viết không dính từ cấm -> Tự động duyệt bài viết bình thường
+                return new ReviewModerationResult { IsAllowed = true, Reason = "AI moderation fallback" };
             }
         }
 
