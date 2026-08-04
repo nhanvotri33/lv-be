@@ -179,6 +179,31 @@ namespace ECommerce1.Controllers
                 IsReverted = false
             };
 
+            // TỰ ĐỘNG ĐỒNG BỘ TRẠNG THÁI ĐƠN HÀNG SANG "ĐỔI TRẢ / HOÀN TIỀN" (StatusId = 7)
+            if (type == "IMPORT_RETURN")
+            {
+                int targetOrderId = request.OrderId ?? 0;
+                if (targetOrderId <= 0 && !string.IsNullOrEmpty(request.Note))
+                {
+                    // Thử trích xuất OrderId từ Note dạng "[Đơn hàng #ORD123]" hoặc "#123"
+                    var match = System.Text.RegularExpressions.Regex.Match(request.Note, @"#?(?:ORD)?(\d+)");
+                    if (match.Success && int.TryParse(match.Groups[1].Value, out int extractedId))
+                    {
+                        targetOrderId = extractedId;
+                    }
+                }
+
+                if (targetOrderId > 0)
+                {
+                    var orderToUpdate = await _context.Orders.FindAsync(targetOrderId);
+                    if (orderToUpdate != null)
+                    {
+                        orderToUpdate.OrderStatusId = 7; // 7 = Refunded (Đổi trả / Hoàn tiền)
+                        _context.Orders.Update(orderToUpdate);
+                    }
+                }
+            }
+
             _context.InventoryTransactions.Add(transaction);
             await _context.SaveChangesAsync();
 
