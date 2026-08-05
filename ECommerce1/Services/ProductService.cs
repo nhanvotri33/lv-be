@@ -105,7 +105,7 @@ namespace ECommerce1.Services
             if (!string.IsNullOrWhiteSpace(brand))
             {
                 var bName = brand.ToLower().Trim();
-                query = query.Where(p => p.Brand != null && p.Brand.Name.ToLower() == bName);
+                query = query.Where(p => p.Brand != null && (p.Brand.Name.ToLower() == bName || (p.Brand.Slug != null && p.Brand.Slug.ToLower() == bName)));
             }
 
             // 2. Lọc theo từ khóa tìm kiếm
