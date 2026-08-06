@@ -36,6 +36,9 @@ namespace ECommerce1.Controllers
             if (user == null)
                 return NotFound("Không tìm thấy người dùng.");
 
+            if (!user.IsActive)
+                return Unauthorized("Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.");
+
             // 2. BACKEND LÀM VIỆC: Đóng gói dữ liệu thô vào UserResponse DTO để trả về
             // (Hạng thành viên của User sẽ được tính toán động dựa trên trường AccumulatedPoints ở phía dưới)
             var response = new UserResponse
