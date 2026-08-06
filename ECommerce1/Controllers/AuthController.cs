@@ -58,7 +58,10 @@ namespace ECommerce1.Controllers
                 .FirstOrDefaultAsync(x => x.Username == request.Username || x.Email == request.Username);
 
             if (user == null)
-                return Unauthorized("Invalid username or password");
+                return Unauthorized("Tên đăng nhập hoặc mật khẩu không chính xác.");
+
+            if (!user.IsActive)
+                return BadRequest("Tài khoản của bạn đã bị khóa. Vui lòng liên hệ với nhân viên của cửa hàng hoặc qua SĐT:18001062.");
 
             var result = _hasher.VerifyHashedPassword(user, user.PasswordHash, request.Password);
 
@@ -111,6 +114,11 @@ namespace ECommerce1.Controllers
                 var payload = await Google.Apis.Auth.GoogleJsonWebSignature.ValidateAsync(request.IdToken, settings);
                 
                 var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == payload.Email);
+                if (user != null && !user.IsActive)
+                {
+                    return BadRequest("Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.");
+                }
+
                 if (user == null)
                 {
                     // Tạo tài khoản mới cho user
@@ -165,6 +173,9 @@ namespace ECommerce1.Controllers
 
             if (storedToken == null || storedToken.IsRevoked || storedToken.ExpiryDate < DateTime.UtcNow)
                 return Unauthorized("Invalid refresh token");
+
+            if (storedToken.User != null && !storedToken.User.IsActive)
+                return Unauthorized("Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.");
 
             var newAccessToken = _tokenService.GenerateAccessToken(storedToken.User);
             var newRefreshToken = _tokenService.GenerateRefreshToken();

@@ -73,6 +73,46 @@ namespace ECommerce1.Services
                 })
                 .ToListAsync();
 
+            // Populate TargetName (Tên thực tế của bản ghi: Username/Email/Product Name...)
+            var userGuids = logs.Where(l => l.TargetTable == "Users" && !string.IsNullOrEmpty(l.TargetId) && Guid.TryParse(l.TargetId, out _))
+                                .Select(l => Guid.Parse(l.TargetId!)).Distinct().ToList();
+            var userMap = await _context.Users.Where(u => userGuids.Contains(u.Id))
+                                .ToDictionaryAsync(u => u.Id.ToString(), u => u.Username ?? u.Email);
+
+            var productIds = logs.Where(l => l.TargetTable == "Products" && !string.IsNullOrEmpty(l.TargetId) && int.TryParse(l.TargetId, out _))
+                                .Select(l => int.Parse(l.TargetId!)).Distinct().ToList();
+            var productMap = await _context.Products.Where(p => productIds.Contains(p.Id))
+                                .ToDictionaryAsync(p => p.Id.ToString(), p => p.Name);
+
+            var warrantyIds = logs.Where(l => l.TargetTable == "Warranties" && !string.IsNullOrEmpty(l.TargetId) && int.TryParse(l.TargetId, out _))
+                                .Select(l => int.Parse(l.TargetId!)).Distinct().ToList();
+            var warrantyMap = await _context.Warranties.Where(w => warrantyIds.Contains(w.Id))
+                                .ToDictionaryAsync(w => w.Id.ToString(), w => w.Name);
+
+            var brandIds = logs.Where(l => l.TargetTable == "Brands" && !string.IsNullOrEmpty(l.TargetId) && int.TryParse(l.TargetId, out _))
+                                .Select(l => int.Parse(l.TargetId!)).Distinct().ToList();
+            var brandMap = await _context.Brands.Where(b => brandIds.Contains(b.Id))
+                                .ToDictionaryAsync(b => b.Id.ToString(), b => b.Name);
+
+            var catIds = logs.Where(l => l.TargetTable == "Categories" && !string.IsNullOrEmpty(l.TargetId) && int.TryParse(l.TargetId, out _))
+                                .Select(l => int.Parse(l.TargetId!)).Distinct().ToList();
+            var catMap = await _context.Categories.Where(c => catIds.Contains(c.Id))
+                                .ToDictionaryAsync(c => c.Id.ToString(), c => c.Name);
+
+            foreach (var item in logs)
+            {
+                if (item.TargetTable == "Users" && item.TargetId != null && userMap.TryGetValue(item.TargetId, out var uName))
+                    item.TargetName = uName;
+                else if (item.TargetTable == "Products" && item.TargetId != null && productMap.TryGetValue(item.TargetId, out var pName))
+                    item.TargetName = pName;
+                else if (item.TargetTable == "Warranties" && item.TargetId != null && warrantyMap.TryGetValue(item.TargetId, out var wName))
+                    item.TargetName = wName;
+                else if (item.TargetTable == "Brands" && item.TargetId != null && brandMap.TryGetValue(item.TargetId, out var bName))
+                    item.TargetName = bName;
+                else if (item.TargetTable == "Categories" && item.TargetId != null && catMap.TryGetValue(item.TargetId, out var cName))
+                    item.TargetName = cName;
+            }
+
             return new PaginatedResult<AuditLogResponseDto>
             {
                 Items = logs,
