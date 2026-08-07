@@ -1,3 +1,4 @@
+using ECommerce.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System;
@@ -65,6 +66,72 @@ namespace ECommerce1.Services
                 _logger.LogError(ex, "Lỗi khi gửi email đến {ToEmail}", toEmail);
                 throw new Exception("Không thể gửi email. Vui lòng thử lại sau.");
             }
+        }
+
+        public async Task SendOrderStatusEmailAsync(Order order, string statusType, string? customNote = null, int failedCount = 1)
+        {
+            if (order == null) return;
+
+            string recipientEmail = !string.IsNullOrWhiteSpace(order.ReceiverEmail) ? order.ReceiverEmail : order.User?.Email;
+            if (string.IsNullOrWhiteSpace(recipientEmail))
+            {
+                _logger.LogWarning($"[EMAIL SKIP] Không thể gửi mail thông báo cho đơn hàng #{order.Id} vì không tìm thấy email người nhận.");
+                return;
+            }
+
+            string frontendBaseUrl = _configuration["Frontend:BaseUrl"];
+            if (string.IsNullOrWhiteSpace(frontendBaseUrl))
+            {
+                frontendBaseUrl = "http://localhost:5173";
+            }
+
+            string subject = "";
+            string htmlMessage = "";
+
+            switch (statusType.ToLower())
+            {
+                case "placed":
+                case "pending":
+                    subject = $"[PhoneStore] Xác nhận đơn hàng #{order.Id} thành công";
+                    htmlMessage = OrderEmailTemplateHelper.GetOrderPlacedEmailHtml(order, frontendBaseUrl);
+                    break;
+
+                case "confirmed":
+                case "preparing":
+                    subject = $"[PhoneStore] Xác nhận đơn hàng #{order.Id} thành công";
+                    htmlMessage = OrderEmailTemplateHelper.GetOrderConfirmedEmailHtml(order, frontendBaseUrl);
+                    break;
+
+                case "shipping":
+                    subject = $"[PhoneStore] Đơn hàng #{order.Id} đang được giao đến bạn";
+                    htmlMessage = OrderEmailTemplateHelper.GetOrderShippingEmailHtml(order, frontendBaseUrl);
+                    break;
+
+                case "delivered":
+                    subject = $"[PhoneStore] Đơn hàng #{order.Id} đã được giao thành công";
+                    htmlMessage = OrderEmailTemplateHelper.GetOrderDeliveredEmailHtml(order, frontendBaseUrl);
+                    break;
+
+                case "cancelled":
+                    subject = $"[PhoneStore] Thông báo hủy đơn hàng #{order.Id}";
+                    htmlMessage = OrderEmailTemplateHelper.GetOrderCancelledEmailHtml(order, frontendBaseUrl, customNote);
+                    break;
+
+                case "refunded":
+                    subject = $"[PhoneStore] Xác nhận hoàn tiền đơn hàng #{order.Id}";
+                    htmlMessage = OrderEmailTemplateHelper.GetOrderRefundedEmailHtml(order, frontendBaseUrl, customNote);
+                    break;
+
+                case "shipping_failed":
+                    subject = $"[PhoneStore] Thông báo giao hàng chưa thành công đơn #{order.Id}";
+                    htmlMessage = OrderEmailTemplateHelper.GetOrderShippingFailedEmailHtml(order, frontendBaseUrl, failedCount);
+                    break;
+
+                default:
+                    return;
+            }
+
+            await SendEmailAsync(recipientEmail, subject, htmlMessage);
         }
     }
 }

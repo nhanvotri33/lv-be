@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
+using Microsoft.Extensions.DependencyInjection;
+
 namespace ECommerce1.Services
 {
     public class OrderService : IOrderService
@@ -14,16 +16,19 @@ namespace ECommerce1.Services
         private readonly IEnumerable<ECommerce1.Services.Payment.IPaymentProvider> _paymentProviders;
         private readonly IAhamoveService _ahamoveService;
         private readonly IEmailService _emailService;
+        private readonly IServiceScopeFactory _scopeFactory;
 
         public OrderService(ApplicationDbContext context, 
             IEnumerable<ECommerce1.Services.Payment.IPaymentProvider> paymentProviders,
             IAhamoveService ahamoveService,
-            IEmailService emailService)
+            IEmailService emailService,
+            IServiceScopeFactory scopeFactory)
         {
             _context = context;
             _paymentProviders = paymentProviders;
             _ahamoveService = ahamoveService;
             _emailService = emailService;
+            _scopeFactory = scopeFactory;
         }
 
         public async Task<IEnumerable<OrderResponse>> GetMyOrdersAsync(Guid userId)
@@ -474,6 +479,7 @@ namespace ECommerce1.Services
                     UserId = userId,
                     ReceiverName = receiverName,
                     ReceiverPhone = receiverPhone,
+                    ReceiverEmail = !string.IsNullOrWhiteSpace(request.Email) ? request.Email.Trim() : user.Email,
                     ShippingAddressLine = shippingAddressLine,
                     ShippingWard = shippingWard,
                     ShippingProvince = shippingProvince,
@@ -553,64 +559,36 @@ namespace ECommerce1.Services
 
                 await transaction.CommitAsync();
 
-                // GỬI EMAIL XÁC NHẬN ĐƠN HÀNG
-                try
+                // GỬI EMAIL XÁC NHẬN ĐƠN HÀNG VỚI TEMPLATE CHI TIẾT
+                int createdOrderId = newOrder.Id;
+                _ = Task.Run(async () =>
                 {
-                    string recipientEmail = !string.IsNullOrWhiteSpace(request.Email) ? request.Email.Trim() : user.Email;
-
-                    if (!string.IsNullOrWhiteSpace(recipientEmail))
+                    try
                     {
-                        string itemsHtml = "";
-                        foreach (var item in cartItemsList)
+                        using var scope = _scopeFactory.CreateScope();
+                        var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                        var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
+
+                        var fullOrder = await dbContext.Orders
+                            .Include(o => o.User)
+                            .Include(o => o.Promotion)
+                            .Include(o => o.OrderItems)
+                                .ThenInclude(oi => oi.ProductVariant)
+                                    .ThenInclude(pv => pv.Product)
+                            .Include(o => o.OrderItems)
+                                .ThenInclude(oi => oi.Warranty)
+                            .FirstOrDefaultAsync(o => o.Id == createdOrderId);
+
+                        if (fullOrder != null)
                         {
-                            string prodName = item.ProductVariant?.Product?.Name ?? "Sản phẩm";
-                            string variantName = item.ProductVariant?.Name ?? "Mặc định";
-                            decimal price = calculatedPrices.ContainsKey(item.Id) ? calculatedPrices[item.Id] : item.ProductVariant.Price;
-
-                            itemsHtml += $@"
-                                <tr>
-                                    <td style='padding: 8px; border: 1px solid #ddd;'>{prodName} ({variantName})</td>
-                                    <td style='padding: 8px; border: 1px solid #ddd; text-align: center;'>{item.Quantity}</td>
-                                    <td style='padding: 8px; border: 1px solid #ddd; text-align: right;'>{price:N0}đ</td>
-                                </tr>";
+                            await emailService.SendOrderStatusEmailAsync(fullOrder, "placed");
                         }
-
-                        string emailBody = $@"
-                            <div style='font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 5px;'>
-                                <h2 style='color: #2b6cb0; text-align: center;'>Xác Nhận Đơn Hàng Thành Công</h2>
-                                <p>Chào <b>{receiverName}</b>,</p>
-                                <p>Cảm ơn bạn đã mua sắm tại <b>PhoneStore</b>. Đơn hàng của bạn đã được tiếp nhận thành công!</p>
-                                
-                                <h3 style='border-bottom: 2px solid #2b6cb0; padding-bottom: 5px;'>Thông tin đơn hàng #{newOrder.Id}</h3>
-                                <p><b>Người nhận:</b> {receiverName} ({receiverPhone})</p>
-                                <p><b>Địa chỉ nhận:</b> {shippingAddressLine}, {shippingWard}, {shippingProvince}</p>
-                                <p><b>Phương thức thanh toán:</b> {newOrder.PaymentMethod}</p>
-                                
-                                <table style='width: 100%; border-collapse: collapse; margin-top: 15px;'>
-                                    <thead>
-                                        <tr style='background: #f7fafc;'>
-                                            <th style='padding: 8px; border: 1px solid #ddd; text-align: left;'>Sản phẩm</th>
-                                            <th style='padding: 8px; border: 1px solid #ddd; text-align: center;'>Số lượng</th>
-                                            <th style='padding: 8px; border: 1px solid #ddd; text-align: right;'>Đơn giá</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {itemsHtml}
-                                    </tbody>
-                                </table>
-                                
-                                <h3 style='text-align: right; color: #e53e3e;'>Tổng tiền thanh toán: {finalPrice:N0}đ</h3>
-                                <hr style='border: 0; border-top: 1px solid #eee; margin: 20px 0;'/>
-                                <p style='font-size: 12px; color: #718096; text-align: center;'>Mọi thắc mắc vui lòng liên hệ hotline 1900xxxx. Xin cảm ơn quý khách!</p>
-                            </div>";
-
-                        _ = _emailService.SendEmailAsync(recipientEmail, $"[PhoneStore] Xác nhận đơn hàng #{newOrder.Id} thành công", emailBody);
                     }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[LỖI GỬI EMAIL]: {ex.Message}");
-                }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[LỖI GỬI EMAIL ĐẶT HÀNG]: {ex.Message}");
+                    }
+                });
                 // ===============================================================
 
                 return new { 
@@ -727,9 +705,10 @@ namespace ECommerce1.Services
                     return; // Trạng thái không đổi
                 }
 
-                // Các trạng thái cuối cùng (Cancelled, Return_failed, Refunded) không cho phép thay đổi nữa
-                // Còn Completed chỉ cho phép chuyển sang Refunded
-                if (oldStatusId == 5 || oldStatusId == 6 || oldStatusId == 7 || (oldStatusId == 4 && newStatusId != 7))
+                // Các trạng thái kết thúc (Cancelled: 5, Refunded: 7) không cho phép thay đổi nữa
+                // Còn Completed (4) chỉ cho phép chuyển sang Refunded (7)
+                // Lưu ý: Giao thất bại (shipping_failed: 6) KHÔNG PHẢI trạng thái kết thúc (vẫn được Giao lại hoặc Hủy đơn)
+                if (oldStatusId == 5 || oldStatusId == 7 || (oldStatusId == 4 && newStatusId != 7))
                 {
                     throw new ArgumentException("Đơn hàng đã ở trạng thái kết thúc, không thể thay đổi trạng thái này.");
                 }
@@ -846,30 +825,57 @@ namespace ECommerce1.Services
                     }
                 }
 
-                // Hoàn tiền tự động qua cổng thanh toán Stripe nếu có
-                if (newStatusId == 7)
-                {
-                    var payment = await _context.Payments
-                        .FirstOrDefaultAsync(p => p.OrderId == order.Id && p.Status == "succeeded" && p.Provider == "stripe");
+                // Cập nhật trạng thái bảng Payments tương ứng với mọi cổng thanh toán (VNPay, Stripe, MoMo...)
+                var orderPayments = await _context.Payments
+                    .Where(p => p.OrderId == order.Id)
+                    .ToListAsync();
 
-                    if (payment != null && !string.IsNullOrEmpty(payment.ProviderTransactionId))
+                if (newStatusId == 7) // 7 = Refunded (Đổi trả / Hoàn tiền)
+                {
+                    foreach (var p in orderPayments)
                     {
-                        var stripeProvider = _paymentProviders.FirstOrDefault(p => p.ProviderName.Equals("stripe", StringComparison.OrdinalIgnoreCase));
-                        if (stripeProvider != null)
+                        if (p.Status == "succeeded" && p.Provider.Equals("stripe", StringComparison.OrdinalIgnoreCase))
                         {
-                            try
+                            var stripeProvider = _paymentProviders.FirstOrDefault(prov => prov.ProviderName.Equals("stripe", StringComparison.OrdinalIgnoreCase));
+                            if (stripeProvider != null && !string.IsNullOrEmpty(p.ProviderTransactionId))
                             {
-                                bool refundSuccess = await stripeProvider.RefundAsync(payment.ProviderTransactionId, payment.Amount);
-                                if (refundSuccess)
+                                try
                                 {
-                                    payment.Status = "refunded";
-                                    payment.UpdatedAt = DateTime.UtcNow;
+                                    await stripeProvider.RefundAsync(p.ProviderTransactionId, p.Amount);
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.WriteLine($"[STRIPE REFUND WARN]: {ex.Message}");
                                 }
                             }
-                            catch (Exception ex)
-                            {
-                                throw new Exception($"Lỗi tự động hoàn tiền qua Stripe: {ex.Message}. Vui lòng kiểm tra lại cấu hình hoặc hoàn tiền thủ công.", ex);
-                            }
+                        }
+                        p.Status = "refunded";
+                        p.UpdatedAt = DateTime.UtcNow;
+                    }
+                }
+                else if (newStatusId == 5) // 5 = Cancelled (Hủy đơn)
+                {
+                    foreach (var p in orderPayments)
+                    {
+                        if (p.Status == "succeeded")
+                        {
+                            p.Status = "refunded";
+                        }
+                        else
+                        {
+                            p.Status = "failed";
+                        }
+                        p.UpdatedAt = DateTime.UtcNow;
+                    }
+                }
+                else if (newStatusId == 4) // 4 = Completed (Giao hàng thành công)
+                {
+                    foreach (var p in orderPayments)
+                    {
+                        if (p.Status == "pending")
+                        {
+                            p.Status = "succeeded";
+                            p.UpdatedAt = DateTime.UtcNow;
                         }
                     }
                 }
@@ -877,6 +883,50 @@ namespace ECommerce1.Services
                 order.OrderStatusId = newStatusId;
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
+
+                // Gửi Email thông báo tự động cho người dùng bất đồng bộ ngầm (Task.Run)
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        using var scope = _scopeFactory.CreateScope();
+                        var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                        var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
+
+                        var fullOrder = await dbContext.Orders
+                            .Include(o => o.User)
+                            .Include(o => o.Promotion)
+                            .Include(o => o.OrderItems)
+                                .ThenInclude(oi => oi.ProductVariant)
+                                    .ThenInclude(pv => pv.Product)
+                            .Include(o => o.OrderItems)
+                                .ThenInclude(oi => oi.Warranty)
+                            .FirstOrDefaultAsync(o => o.Id == id);
+
+                        if (fullOrder != null)
+                        {
+                            string statusType = newStatusId switch
+                            {
+                                2 => "confirmed",
+                                3 => "shipping",
+                                4 => "delivered",
+                                5 => "cancelled",
+                                6 => "shipping_failed",
+                                7 => "refunded",
+                                _ => ""
+                            };
+
+                            if (!string.IsNullOrEmpty(statusType))
+                            {
+                                await emailService.SendOrderStatusEmailAsync(fullOrder, statusType);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[ORDER STATUS EMAIL ERROR]: {ex.Message}");
+                    }
+                });
             }
             catch
             {
@@ -988,8 +1038,37 @@ namespace ECommerce1.Services
             order.AhamoveSharedLink = ahamoveResponse.SharedLink;
             order.ActualShippingFee = ahamoveResponse.TotalFee;
             order.OrderStatusId = 3; // 3 = Shipping
-
             await _context.SaveChangesAsync();
+
+            // Gửi Email thông báo trạng thái Đang giao hàng qua Ahamove
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using var scope = _scopeFactory.CreateScope();
+                    var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                    var emailService = scope.ServiceProvider.GetRequiredService<IEmailService>();
+
+                    var fullOrder = await dbContext.Orders
+                        .Include(o => o.User)
+                        .Include(o => o.Promotion)
+                        .Include(o => o.OrderItems)
+                            .ThenInclude(oi => oi.ProductVariant)
+                                .ThenInclude(pv => pv.Product)
+                        .Include(o => o.OrderItems)
+                            .ThenInclude(oi => oi.Warranty)
+                        .FirstOrDefaultAsync(o => o.Id == orderId);
+
+                    if (fullOrder != null)
+                    {
+                        await emailService.SendOrderStatusEmailAsync(fullOrder, "shipping");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[AHAMOVE STATUS EMAIL ERROR]: {ex.Message}");
+                }
+            });
 
             return new OrderResponse
             {

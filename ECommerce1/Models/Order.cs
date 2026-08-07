@@ -20,6 +20,7 @@ namespace ECommerce.Models
 
         public string ReceiverName { get; set; }
         public string ReceiverPhone { get; set; }
+        public string? ReceiverEmail { get; set; }
         public string ShippingAddressLine { get; set; }
         public string ShippingWard { get; set; }
         public string ShippingProvince { get; set; }
