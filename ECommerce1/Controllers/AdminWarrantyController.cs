@@ -258,7 +258,171 @@ namespace ECommerce1.Controllers
                 return BadRequest(new { message = "Lỗi khi xóa gói bảo hành: " + ex.Message });
             }
         }
+
+        // ================= DANH SÁCH BẢO HÀNH & THIẾT BỊ KHÁCH HÀNG (DÙNG CHO ADMIN/KTV TIẾP CẬN SỬA CHỮA) =================
+        [HttpGet("customer-warranties")]
+        public async Task<IActionResult> GetCustomerWarranties(
+            [FromQuery] string? search = null,
+            [FromQuery] string? imei = null,
+            [FromQuery] string? status = null)
+        {
+            var query = _context.OrderItems
+                .Include(oi => oi.Order)
+                    .ThenInclude(o => o.User)
+                .Include(oi => oi.Order)
+                    .ThenInclude(o => o.OrderStatus)
+                .Include(oi => oi.Warranty)
+                .Include(oi => oi.CustomerDevice)
+                .Include(oi => oi.ProductVariant)
+                    .ThenInclude(pv => pv.Product)
+                .Where(oi => oi.WarrantyId.HasValue)
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var s = search.Trim().ToLower();
+                query = query.Where(oi =>
+                    (oi.Order.User != null && (oi.Order.User.Username.ToLower().Contains(s) || oi.Order.User.Email.ToLower().Contains(s))) ||
+                    oi.Order.ReceiverName.ToLower().Contains(s) ||
+                    oi.Order.ReceiverPhone.Contains(s) ||
+                    (oi.CustomerDevice != null && oi.CustomerDevice.ProductName.ToLower().Contains(s))
+                );
+            }
+
+            if (!string.IsNullOrWhiteSpace(imei))
+            {
+                var im = imei.Trim();
+                query = query.Where(oi => oi.CustomerDevice != null && oi.CustomerDevice.ImeiOrSerial.Contains(im));
+            }
+
+            if (!string.IsNullOrWhiteSpace(status))
+            {
+                var st = status.Trim().ToUpper();
+                if (st == "ACTIVATED")
+                {
+                    query = query.Where(oi => oi.CustomerDevice != null && !string.IsNullOrEmpty(oi.CustomerDevice.ImeiOrSerial) && oi.CustomerDevice.ImeiOrSerial != "CHƯA_KÍCH_HOẠT");
+                }
+                else if (st == "PENDING")
+                {
+                    query = query.Where(oi => oi.CustomerDevice == null || string.IsNullOrEmpty(oi.CustomerDevice.ImeiOrSerial) || oi.CustomerDevice.ImeiOrSerial == "CHƯA_KÍCH_HOẠT");
+                }
+            }
+
+            var result = await query
+                .OrderByDescending(oi => oi.Order.CreatedAt)
+                .Select(oi => new
+                {
+                    OrderItemId = oi.Id,
+                    OrderId = oi.OrderId,
+                    OrderDate = oi.Order.CreatedAt,
+                    OrderStatusId = oi.Order.OrderStatusId,
+                    OrderStatusName = oi.Order.OrderStatus != null ? oi.Order.OrderStatus.Name : "N/A",
+                    
+                    // Thông tin khách hàng
+                    UserId = oi.Order.UserId,
+                    UserName = oi.Order.User != null ? oi.Order.User.Username : oi.Order.ReceiverName,
+                    UserEmail = oi.Order.User != null ? oi.Order.User.Email : "",
+                    ReceiverName = oi.Order.ReceiverName,
+                    ReceiverPhone = oi.Order.ReceiverPhone,
+
+                    // Thông tin máy & IMEI
+                    CustomerDeviceId = oi.CustomerDeviceId,
+                    ProductName = oi.CustomerDevice != null ? oi.CustomerDevice.ProductName : (oi.ProductVariant != null ? oi.ProductVariant.Product.Name + " (" + oi.ProductVariant.Name + ")" : "Thiết bị"),
+                    Imei = oi.CustomerDevice != null ? oi.CustomerDevice.ImeiOrSerial : "CHƯA_KÍCH_HOẠT",
+                    IsActivated = oi.CustomerDevice != null && !string.IsNullOrEmpty(oi.CustomerDevice.ImeiOrSerial) && oi.CustomerDevice.ImeiOrSerial != "CHƯA_KÍCH_HOẠT",
+
+                    // Thông tin bảo hành
+                    WarrantyId = oi.WarrantyId,
+                    WarrantyName = oi.Warranty != null ? oi.Warranty.Name : "Bảo hành mở rộng",
+                    WarrantyCode = oi.Warranty != null ? oi.Warranty.Code : "",
+                    DurationMonths = oi.Warranty != null ? oi.Warranty.DurationMonths : 12,
+                    WarrantyPrice = oi.WarrantyPrice,
+                    InspectionStatus = oi.InspectionStatus,
+                    ExpireDate = oi.Order.CreatedAt.AddMonths(oi.Warranty != null ? oi.Warranty.DurationMonths : 12),
+                    IsExpired = DateTime.UtcNow > oi.Order.CreatedAt.AddMonths(oi.Warranty != null ? oi.Warranty.DurationMonths : 12),
+
+                    // Ghi chú xử lý / Tiếp cận sửa chữa
+                    OrderNote = oi.Order.Note
+                })
+                .ToListAsync();
+
+            return Ok(result);
+        }
+
+        // ================= CẬP NHẬT MÃ IMEI VÀ GHI CHÚ TIẾP CẬN SỬA CHỮA (ADMIN) =================
+        [HttpPut("update-device-imei")]
+        public async Task<IActionResult> UpdateDeviceImei([FromBody] AdminUpdateImeiRequest request)
+        {
+            if (request == null || request.OrderItemId <= 0)
+            {
+                return BadRequest(new { message = "Thông tin không hợp lệ." });
+            }
+
+            var orderItem = await _context.OrderItems
+                .Include(oi => oi.Order)
+                .Include(oi => oi.CustomerDevice)
+                .Include(oi => oi.ProductVariant)
+                    .ThenInclude(pv => pv.Product)
+                .FirstOrDefaultAsync(oi => oi.Id == request.OrderItemId);
+
+            if (orderItem == null)
+            {
+                return NotFound(new { message = "Không tìm thấy thông tin gói bảo hành này." });
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.Imei))
+            {
+                var cleanImei = request.Imei.Trim();
+                if (orderItem.CustomerDevice != null)
+                {
+                    orderItem.CustomerDevice.ImeiOrSerial = cleanImei;
+                }
+                else
+                {
+                    var prodName = orderItem.ProductVariant != null
+                        ? orderItem.ProductVariant.Product.Name + " (" + orderItem.ProductVariant.Name + ")"
+                        : "Thiết bị bảo hành";
+
+                    var device = new CustomerDevice
+                    {
+                        UserId = orderItem.Order.UserId,
+                        ImeiOrSerial = cleanImei,
+                        ProductName = prodName,
+                        VariantId = orderItem.VariantId,
+                        PurchaseDate = orderItem.Order.CreatedAt,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    _context.CustomerDevices.Add(device);
+                    await _context.SaveChangesAsync();
+
+                    orderItem.CustomerDeviceId = device.Id;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.Note))
+            {
+                orderItem.Order.Note = request.Note;
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.InspectionStatus))
+            {
+                orderItem.InspectionStatus = request.InspectionStatus;
+            }
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Cập nhật thông tin IMEI & Ghi chú tiếp cận sửa chữa thành công!" });
+        }
     }
+
+    public class AdminUpdateImeiRequest
+    {
+        public int OrderItemId { get; set; }
+        public string? Imei { get; set; }
+        public string? Note { get; set; }
+        public string? InspectionStatus { get; set; }
+    }
+
 
     public class UpdateInspectionRequest
     {
