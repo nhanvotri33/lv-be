@@ -21,13 +21,161 @@ namespace ECommerce1.Controllers
             _context = context;
         }
 
-        // ================= LẤY GÓI BẢO HÀNH PHÙ HỢP CHO BIẾN THỂ SẢN PHẨM =================
-        // Logic xử lý:
-        // 1. Tìm biến thể sản phẩm (ProductVariant) cùng với thông tin sản phẩm cha (Product).
-        // 2. Lấy toàn bộ cây danh mục cha (Category Ancestors) để đối chiếu quy tắc phân cấp danh mục.
-        // 3. Truy vấn các gói bảo hành có cấu hình quy tắc (WarrantyPackageRules) khớp với:
-        //    - ProductId trùng khớp, HOẶC CategoryId nằm trong danh mục tổ tiên, HOẶC BrandId trùng khớp, HOẶC áp dụng chung cho mọi sản phẩm (tất cả các FK đều NULL).
-        //    - Giá bán hiện tại của biến thể nằm trong khoảng [MinPrice, MaxPrice] của quy tắc.
+        // ================= LẤY TẤT CẢ GÓI BẢO HÀNH ĐANG KÍCH HOẠT (CHO CLIENT) =================
+        [HttpGet]
+        public async Task<IActionResult> GetAllWarranties()
+        {
+            var warranties = await _context.Warranties
+                .Where(w => w.IsActive)
+                .OrderBy(w => w.BasePrice)
+                .Select(w => new
+                {
+                    w.Id,
+                    w.Code,
+                    w.Name,
+                    w.Description,
+                    w.TermsHtml,
+                    w.DurationMonths,
+                    w.BasePrice,
+                    w.RequiresInspection
+                })
+                .ToListAsync();
+
+            return Ok(warranties);
+        }
+
+        // ================= LẤY DANH SÁCH BẢO HÀNH & THIẾT BỊ CỦA TÔI =================
+        [HttpGet("my-devices")]
+        [Authorize]
+        public async Task<IActionResult> GetMyDevices()
+        {
+            var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out Guid userId))
+            {
+                return Unauthorized(new { message = "Vui lòng đăng nhập." });
+            }
+
+            // Lấy danh sách thiết bị từ CustomerDevices
+            var devices = await _context.CustomerDevices
+                .Where(d => d.UserId == userId)
+                .OrderByDescending(d => d.CreatedAt)
+                .Select(d => new
+                {
+                    d.Id,
+                    d.ImeiOrSerial,
+                    d.ProductName,
+                    d.PurchaseDate,
+                    d.CreatedAt
+                })
+                .ToListAsync();
+
+            // Lấy các dòng OrderItem có mua bảo hành của User
+            var orderWarranties = await _context.OrderItems
+                .Include(oi => oi.Order)
+                .Include(oi => oi.Warranty)
+                .Include(oi => oi.CustomerDevice)
+                .Include(oi => oi.ProductVariant)
+                    .ThenInclude(pv => pv.Product)
+                .Where(oi => oi.Order.UserId == userId && oi.WarrantyId.HasValue)
+                .OrderByDescending(oi => oi.Order.CreatedAt)
+                .Select(oi => new
+                {
+                    OrderItemId = oi.Id,
+                    OrderId = oi.OrderId,
+                    OrderDate = oi.Order.CreatedAt,
+                    OrderStatusId = oi.Order.OrderStatusId,
+                    OrderStatusName = oi.Order.OrderStatus != null ? oi.Order.OrderStatus.Name : "",
+                    WarrantyId = oi.WarrantyId,
+                    WarrantyName = oi.Warranty != null ? oi.Warranty.Name : "",
+                    WarrantyCode = oi.Warranty != null ? oi.Warranty.Code : "",
+                    DurationMonths = oi.Warranty != null ? oi.Warranty.DurationMonths : 12,
+                    WarrantyPrice = oi.WarrantyPrice,
+                    ProductName = oi.CustomerDevice != null ? oi.CustomerDevice.ProductName : (oi.ProductVariant != null ? oi.ProductVariant.Product.Name + " (" + oi.ProductVariant.Name + ")" : "Gói Bảo Hành Độc Lập"),
+                    Imei = oi.CustomerDevice != null ? oi.CustomerDevice.ImeiOrSerial : "",
+                    CustomerDeviceId = oi.CustomerDeviceId,
+                    InspectionStatus = oi.InspectionStatus,
+                    IsActivated = oi.CustomerDevice != null && !string.IsNullOrEmpty(oi.CustomerDevice.ImeiOrSerial) && oi.CustomerDevice.ImeiOrSerial != "CHƯA_KÍCH_HOẠT",
+                    ExpireDate = oi.Order.CreatedAt.AddMonths(oi.Warranty != null ? oi.Warranty.DurationMonths : 12)
+                })
+                .ToListAsync();
+
+            return Ok(new
+            {
+                devices,
+                warranties = orderWarranties
+            });
+        }
+
+        // ================= KÍCH HOẠT / CẬP NHẬT MÃ IMEI CHO GÓI BẢO HÀNH =================
+        [HttpPost("activate-imei")]
+        [Authorize]
+        public async Task<IActionResult> ActivateImei([FromBody] ActivateImeiRequest request)
+        {
+            if (request == null || string.IsNullOrWhiteSpace(request.Imei))
+            {
+                return BadRequest(new { message = "Mã IMEI không được để trống." });
+            }
+
+            var cleanImei = request.Imei.Trim();
+            if (cleanImei.Length != 15 || !cleanImei.All(char.IsDigit))
+            {
+                return BadRequest(new { message = "Mã IMEI phải chứa đúng 15 chữ số từ 0-9." });
+            }
+
+            var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out Guid userId))
+            {
+                return Unauthorized(new { message = "Vui lòng đăng nhập." });
+            }
+
+            var orderItem = await _context.OrderItems
+                .Include(oi => oi.Order)
+                .Include(oi => oi.CustomerDevice)
+                .Include(oi => oi.ProductVariant)
+                    .ThenInclude(pv => pv.Product)
+                .FirstOrDefaultAsync(oi => oi.Id == request.OrderItemId && oi.Order.UserId == userId);
+
+            if (orderItem == null)
+            {
+                return NotFound(new { message = "Không tìm thấy thông tin đơn hàng bảo hành." });
+            }
+
+            if (orderItem.CustomerDevice != null)
+            {
+                orderItem.CustomerDevice.ImeiOrSerial = cleanImei;
+            }
+            else
+            {
+                var prodName = orderItem.ProductVariant != null
+                    ? orderItem.ProductVariant.Product.Name + " (" + orderItem.ProductVariant.Name + ")"
+                    : "Gói bảo hành mở rộng";
+
+                var device = new CustomerDevice
+                {
+                    UserId = userId,
+                    ImeiOrSerial = cleanImei,
+                    ProductName = prodName,
+                    VariantId = orderItem.VariantId,
+                    PurchaseDate = orderItem.Order.CreatedAt,
+                    CreatedAt = DateTime.UtcNow
+                };
+
+                _context.CustomerDevices.Add(device);
+                await _context.SaveChangesAsync();
+
+                orderItem.CustomerDeviceId = device.Id;
+            }
+
+            await _context.SaveChangesAsync();
+
+            return Ok(new
+            {
+                message = "Kích hoạt mã IMEI thành công! Gói bảo hành đã có hiệu lực.",
+                imei = cleanImei
+            });
+        }
+
+        // LẤY GÓI BẢO HÀNH PHÙ HỢP CHO BIẾN THỂ SẢN PHẨM
         [HttpGet("variants/{variantId}")]
         public async Task<IActionResult> GetWarrantiesForVariant(int variantId)
         {
@@ -38,19 +186,8 @@ namespace ECommerce1.Controllers
             if (variant == null)
                 return NotFound(new { message = "Không tìm thấy biến thể sản phẩm." });
 
-            // Lấy danh sách ID danh mục tổ tiên
             var ancestorCatIds = await GetAncestorCategoryIds(variant.Product.CategoryId);
 
-            // ================= LUỒNG TRUY VẤN GÓI BẢO HÀNH THỎA MÃN QUY TẮC RÀNG BUỘC =================
-            // Hệ thống thực hiện truy vấn các gói bảo hành thỏa mãn đồng thời các điều kiện sau:
-            // 1. Gói bảo hành phải đang ở trạng thái kích hoạt (IsActive = true).
-            // 2. Gói bảo hành đó phải có ít nhất một quy tắc (WarrantyPackageRules) khớp với sản phẩm hiện tại:
-            //    - Ràng buộc Hãng (BrandId): Nếu r.BrandId bằng NULL (không chọn) -> Áp dụng cho mọi hãng sản xuất. Nếu có giá trị -> bắt buộc trùng với BrandId của sản phẩm.
-            //    - Ràng buộc Danh mục (CategoryId): Nếu r.CategoryId bằng NULL (không chọn) -> Áp dụng cho mọi danh mục. Nếu có giá trị -> bắt buộc danh mục đó hoặc danh mục cha của nó (ancestorCatIds) trùng khớp.
-            //    - Ràng buộc Sản phẩm (ProductId): Nếu r.ProductId bằng NULL (không chọn) -> Áp dụng cho mọi sản phẩm. Nếu có giá trị -> chỉ áp dụng riêng cho sản phẩm đó (ví dụ: chỉ cho S24+).
-            //    - Ràng buộc Tầm giá máy (MinPrice & MaxPrice): Giá bán hiện tại của biến thể (variant.Price) phải nằm trong khoảng [r.MinPrice, r.MaxPrice].
-            //      + Nếu không nhập MaxPrice (NULL) -> không giới hạn giá tối đa.
-            //      + Nếu MinPrice bằng 0 -> áp dụng từ giá trị nhỏ nhất.
             var warranties = await _context.Warranties
                 .Where(w => w.IsActive)
                 .Where(w => _context.WarrantyPackageRules.Any(r =>
@@ -66,12 +203,7 @@ namespace ECommerce1.Controllers
             return Ok(warranties);
         }
 
-        // ================= ĐẶT MUA LẺ GÓI BẢO HÀNH (MÁY CŨ - CẦN THẨM ĐỊNH) =================
-        // Logic xử lý:
-        // 1. Kiểm tra sự tồn tại của gói bảo hành và biến thể máy tương ứng.
-        // 2. Lưu vết thiết bị cũ của khách vào bảng `CustomerDevices` (lưu IMEI, tên sản phẩm và ngày kích hoạt).
-        // 3. Tạo một hóa đơn mới (`Order`) ở trạng thái chờ thanh toán (Pending - OrderStatusId = 1).
-        // 4. Tạo chi tiết đơn hàng (`OrderItem`) liên kết thiết bị trên, gán `PriceAtPurchase = 0` (vì chỉ mua lẻ bảo hành) và set `InspectionStatus = WAITING_CHECK` để yêu cầu kỹ thuật viên thẩm định máy cũ tại quầy.
+        // ĐẶT MUA LẺ GÓI BẢO HÀNH
         [HttpPost("standalone/checkout")]
         [Authorize]
         public async Task<IActionResult> StandaloneCheckout([FromBody] StandaloneWarrantyCheckoutRequest request)
@@ -83,64 +215,71 @@ namespace ECommerce1.Controllers
             if (warranty == null)
                 return BadRequest(new { message = "Gói bảo hành không hợp lệ hoặc đã bị khóa." });
 
-            var variant = await _context.ProductVariants.Include(pv => pv.Product).FirstOrDefaultAsync(pv => pv.Id == request.VariantId);
-            if (variant == null)
-                return BadRequest(new { message = "Biến thể sản phẩm máy cũ không hợp lệ." });
-
-            // Đọc UserId từ JWT Token (yêu cầu người dùng phải đăng nhập để đảm bảo tính nhất quán của hệ thống)
             var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out Guid userId))
             {
                 return Unauthorized(new { message = "Vui lòng đăng nhập để thực hiện giao dịch." });
             }
 
+            var cleanImei = string.IsNullOrWhiteSpace(request.Imei) ? "CHƯA_KÍCH_HOẠT" : request.Imei.Trim();
+
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
-                // 1. Tạo bản ghi thông tin thiết bị cũ của khách
                 var customerDevice = new CustomerDevice
                 {
                     UserId = userId,
-                    ImeiOrSerial = request.Imei,
-                    ProductName = variant.Product.Name + " (" + variant.Name + ")",
-                    VariantId = variant.Id,
+                    ImeiOrSerial = cleanImei,
+                    ProductName = warranty.Name,
                     PurchaseDate = DateTime.UtcNow,
                     CreatedAt = DateTime.UtcNow
                 };
+
+                if (request.VariantId > 0)
+                {
+                    var variant = await _context.ProductVariants.Include(pv => pv.Product).FirstOrDefaultAsync(pv => pv.Id == request.VariantId);
+                    if (variant != null)
+                    {
+                        customerDevice.ProductName = variant.Product.Name + " (" + variant.Name + ")";
+                        customerDevice.VariantId = variant.Id;
+                    }
+                }
+
                 _context.CustomerDevices.Add(customerDevice);
                 await _context.SaveChangesAsync();
 
-                // 2. Tạo đơn hàng mới ở trạng thái chờ thanh toán
                 var newOrder = new Order
                 {
                     UserId = userId,
-                    ReceiverName = request.ReceiverName,
-                    ReceiverPhone = request.ReceiverPhone,
-                    ShippingAddressLine = "Thẩm định & Nhận gói bảo hành lẻ tại cửa hàng. IMEI: " + request.Imei,
+                    ReceiverName = request.ReceiverName ?? "Khách hàng",
+                    ReceiverPhone = request.ReceiverPhone ?? "0900000000",
+                    ShippingAddressLine = "Đăng ký mua gói bảo hành: " + warranty.Name + " (IMEI: " + cleanImei + ")",
                     ShippingWard = "N/A",
                     ShippingProvince = "N/A",
                     TotalPrice = warranty.BasePrice,
                     OrderStatusId = 1, // Chờ thanh toán
                     CreatedAt = DateTime.UtcNow,
                     PaymentMethod = "Stripe",
-                    ShippingCarrier = "Nhận tại cửa hàng",
-                    Note = "Đơn đặt mua lẻ gói bảo hành mở rộng: " + warranty.Name,
+                    ShippingCarrier = "Gói Bảo Hành Trực Tuyến",
+                    Note = "Đơn đăng ký gói bảo hành mở rộng: " + warranty.Name,
                     ActualShippingFee = 0
                 };
                 _context.Orders.Add(newOrder);
                 await _context.SaveChangesAsync();
 
-                // 3. Tạo chi tiết đơn hàng
+                // Lấy 1 ProductVariant mặc định hoặc gán VariantId
+                int varId = request.VariantId > 0 ? request.VariantId : (await _context.ProductVariants.Select(pv => pv.Id).FirstOrDefaultAsync());
+
                 var orderItem = new OrderItem
                 {
                     OrderId = newOrder.Id,
-                    VariantId = variant.Id,
+                    VariantId = varId,
                     Quantity = 1,
-                    PriceAtPurchase = 0, // Tiền máy bằng 0 (khách chỉ mua gói bảo hành lẻ)
+                    PriceAtPurchase = 0,
                     WarrantyId = warranty.Id,
                     WarrantyPrice = warranty.BasePrice,
                     CustomerDeviceId = customerDevice.Id,
-                    InspectionStatus = "WAITING_CHECK" // BẮT BUỘC THẨM ĐỊNH TẠI CỬA HÀNG
+                    InspectionStatus = warranty.RequiresInspection ? "WAITING_CHECK" : "PASSED"
                 };
                 _context.OrderItems.Add(orderItem);
                 await _context.SaveChangesAsync();
@@ -149,7 +288,7 @@ namespace ECommerce1.Controllers
 
                 return Ok(new
                 {
-                    message = "Đặt mua gói bảo hành lẻ thành công. Vui lòng mang thiết bị đến cửa hàng để thẩm định.",
+                    message = "Đăng ký mua gói bảo hành thành công!",
                     orderId = newOrder.Id,
                     receiverPhone = newOrder.ReceiverPhone
                 });
@@ -161,7 +300,6 @@ namespace ECommerce1.Controllers
             }
         }
 
-        // Hàm đệ quy lấy toàn bộ tổ tiên danh mục
         private async Task<List<int>> GetAncestorCategoryIds(int categoryId)
         {
             var list = new List<int> { categoryId };
@@ -177,10 +315,17 @@ namespace ECommerce1.Controllers
 
     public class StandaloneWarrantyCheckoutRequest
     {
-        public string ReceiverName { get; set; }
-        public string ReceiverPhone { get; set; }
-        public string Imei { get; set; }
+        public string? ReceiverName { get; set; }
+        public string? ReceiverPhone { get; set; }
+        public string? Imei { get; set; }
         public int WarrantyId { get; set; }
         public int VariantId { get; set; }
     }
+
+    public class ActivateImeiRequest
+    {
+        public int OrderItemId { get; set; }
+        public string Imei { get; set; }
+    }
 }
+
