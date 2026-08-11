@@ -47,6 +47,7 @@ namespace ECommerce.Models
         public DbSet<AuditLog> AuditLogs { get; set; }
         public DbSet<CategoryBrandDefault> CategoryBrandDefaults { get; set; }
         public DbSet<Banner> Banners { get; set; }
+        public DbSet<Blog> Blogs { get; set; }
         public DbSet<PromotionCampaign> PromotionCampaigns { get; set; }
         public DbSet<CampaignMainProductRule> CampaignMainProductRules { get; set; }
         public DbSet<CampaignAddonProductRule> CampaignAddonProductRules { get; set; }
