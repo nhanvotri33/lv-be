@@ -22,7 +22,7 @@ namespace ECommerce1.Controllers
             _context = context;
         }
 
-        // GET: api/Blog
+        //// GET: api/Blog
         [HttpGet]
         public async Task<IActionResult> GetAll(
             [FromQuery] string? search = null,
@@ -47,7 +47,7 @@ namespace ECommerce1.Controllers
             if (!string.IsNullOrWhiteSpace(search))
             {
                 var term = search.Trim().ToLower();
-                query = query.Where(b => b.Title.ToLower().Contains(term) 
+                query = query.Where(b => b.Title.ToLower().Contains(term)
                                       || (b.Summary != null && b.Summary.ToLower().Contains(term))
                                       || (b.Tags != null && b.Tags.ToLower().Contains(term)));
             }
@@ -72,7 +72,7 @@ namespace ECommerce1.Controllers
                 .ThenByDescending(b => b.CreatedAt)
                 .Skip((page - 1) * size)
                 .Take(size)
-                .Select(b => MapToResponse(b))
+                .Select(b => BlogControllerHelpers.MapToResponse(b))
                 .ToListAsync();
 
             return Ok(new
@@ -85,7 +85,7 @@ namespace ECommerce1.Controllers
             });
         }
 
-        // GET: api/Blog/{id}
+        // GET: api/Blog/{id} lấy data từ id
         [HttpGet("{id:int}")]
         public async Task<IActionResult> GetById(int id)
         {
@@ -96,10 +96,10 @@ namespace ECommerce1.Controllers
             blog.ViewCount += 1;
             await _context.SaveChangesAsync();
 
-            return Ok(MapToResponse(blog));
+            return Ok(BlogControllerHelpers.MapToResponse(blog));
         }
 
-        // GET: api/Blog/slug/{slug}
+        // GET: api/Blog/slug/{slug} lấy data từ slug
         [HttpGet("slug/{slug}")]
         public async Task<IActionResult> GetBySlug(string slug)
         {
@@ -110,7 +110,7 @@ namespace ECommerce1.Controllers
             blog.ViewCount += 1;
             await _context.SaveChangesAsync();
 
-            return Ok(MapToResponse(blog));
+            return Ok(BlogControllerHelpers.MapToResponse(blog));
         }
 
         // POST: api/Blog
@@ -120,7 +120,7 @@ namespace ECommerce1.Controllers
         {
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
-            var slug = string.IsNullOrWhiteSpace(request.Slug) ? GenerateSlug(request.Title) : request.Slug.Trim();
+            var slug = string.IsNullOrWhiteSpace(request.Slug) ? BlogControllerHelpers.GenerateSlug(request.Title) : request.Slug.Trim();
 
             // Kiểm tra trùng slug
             if (await _context.Blogs.AnyAsync(b => b.Slug == slug))
@@ -155,10 +155,10 @@ namespace ECommerce1.Controllers
             _context.Blogs.Add(blog);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction(nameof(GetById), new { id = blog.Id }, MapToResponse(blog));
+            return CreatedAtAction(nameof(GetBySlug), new { id = blog.Id }, BlogControllerHelpers.MapToResponse(blog));
         }
 
-        // PUT: api/Blog/{id}
+        // PUT: api/Blog/{id} cập nhật từ id
         [HttpPut("{id:int}")]
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> Update(int id, [FromBody] BlogRequest request)
@@ -168,7 +168,7 @@ namespace ECommerce1.Controllers
             var blog = await _context.Blogs.Include(b => b.User).FirstOrDefaultAsync(b => b.Id == id);
             if (blog == null) return NotFound(new { message = "Không tìm thấy bài viết." });
 
-            var slug = string.IsNullOrWhiteSpace(request.Slug) ? GenerateSlug(request.Title) : request.Slug.Trim();
+            var slug = string.IsNullOrWhiteSpace(request.Slug) ? BlogControllerHelpers.GenerateSlug(request.Title) : request.Slug.Trim();
             if (await _context.Blogs.AnyAsync(b => b.Slug == slug && b.Id != id))
             {
                 slug = $"{slug}-{DateTime.UtcNow.Ticks % 10000}";
@@ -188,7 +188,40 @@ namespace ECommerce1.Controllers
 
             await _context.SaveChangesAsync();
 
-            return Ok(MapToResponse(blog));
+            return Ok(BlogControllerHelpers.MapToResponse(blog));
+        }
+
+        // PUT: api/Blog/{slug} thêm data từ slug
+        [HttpPut("slug/{slug}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> UpdateBySlug(string slug, [FromBody] BlogRequest request)
+        {
+            if (!ModelState.IsValid) return BadRequest(ModelState);
+
+            var blog = await _context.Blogs.Include(b => b.User).FirstOrDefaultAsync(b => b.Slug == slug);
+            if (blog == null) return NotFound(new { message = "Không tìm thấy bài viết." });
+
+            var newSlug = string.IsNullOrWhiteSpace(request.Slug) ? BlogControllerHelpers.GenerateSlug(request.Title) : request.Slug.Trim();
+            if (await _context.Blogs.AnyAsync(b => b.Slug == slug && b.Id != blog.Id))
+            {
+                slug = $"{slug}-{DateTime.UtcNow.Ticks % 10000}";
+            }
+
+            blog.Title = request.Title.Trim();
+            blog.Slug = slug;
+            blog.Summary = request.Summary?.Trim();
+            blog.Content = request.Content;
+            blog.ThumbnailUrl = request.ThumbnailUrl?.Trim();
+            blog.Author = request.Author?.Trim();
+            blog.Category = request.Category?.Trim();
+            blog.Tags = request.Tags?.Trim();
+            blog.IsPublished = request.IsPublished;
+            blog.IsFeatured = request.IsFeatured;
+            blog.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            return Ok(BlogControllerHelpers.MapToResponse(blog));
         }
 
         // DELETE: api/Blog/{id}
@@ -205,6 +238,7 @@ namespace ECommerce1.Controllers
             return Ok(new { message = "Xóa bài viết thành công." });
         }
 
+
         // PATCH: api/Blog/{id}/toggle-publish
         [HttpPatch("{id:int}/toggle-publish")]
         [Authorize(Roles = "Admin")]
@@ -220,56 +254,19 @@ namespace ECommerce1.Controllers
             return Ok(new { message = $"Đã {(blog.IsPublished ? "xuất bản" : "ẩn")} bài viết.", isPublished = blog.IsPublished });
         }
 
-        private static BlogResponse MapToResponse(Blog b)
+        // PATCH: api/Blog/{slug}/
+        [HttpPatch("slug/{slug}/toggle-publish")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> TogglePublish(string slug)
         {
-            return new BlogResponse
-            {
-                Id = b.Id,
-                Title = b.Title,
-                Slug = b.Slug,
-                Summary = b.Summary,
-                Content = b.Content,
-                ThumbnailUrl = b.ThumbnailUrl,
-                Author = b.Author,
-                Category = b.Category,
-                Tags = b.Tags,
-                ViewCount = b.ViewCount,
-                IsPublished = b.IsPublished,
-                IsFeatured = b.IsFeatured,
-                CreatedAt = b.CreatedAt,
-                UpdatedAt = b.UpdatedAt,
-                UserId = b.UserId,
-                AuthorName = b.User != null ? b.User.Username : b.Author
-            };
-        }
+            var blog = await _context.Blogs.FirstOrDefaultAsync(b => b.Slug == slug);
+            if (blog == null) return NotFound(new { message = "Không tìm thấy bài viết." });
 
-        private static string GenerateSlug(string phrase)
-        {
-            string str = phrase.ToLower().Trim();
-            // Thay thế ký tự tiếng Việt
-            string[] vietnameseSigns = new string[]
-            {
-                "aàảãáạăằẳẵắặâầẩẫấậ", "AÀẢÃÁẠĂẰẲẴẮẶÂẦẨẪẤẬ",
-                "dđ", "DĐ",
-                "eèẻẽéẹêềểễếệ", "EÈẺẼÉẸÊỀỂỄẾỆ",
-                "iìỉĩíị", "IÌỈĨÍỊ",
-                "oòỏõóọôồổỗốộơờởỡớợ", "OÒỎÕÓỌÔỒỔỖỐỘƠỜỞỠỚỢ",
-                "uùủũúụưừửữứự", "UÙỦŨÚỤƯỪỬỮỨỰ",
-                "yỳỷỹýỵ", "YỲỶỸÝỴ"
-            };
+            blog.IsPublished = !blog.IsPublished;
+            blog.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
 
-            for (int i = 1; i < vietnameseSigns.Length; i += 2)
-            {
-                for (int j = 0; j < vietnameseSigns[i - 1].Length; j++)
-                {
-                    str = str.Replace(vietnameseSigns[i - 1][j], vietnameseSigns[i][0]);
-                }
-            }
-
-            str = Regex.Replace(str, @"[^a-z0-9\s-]", "");
-            str = Regex.Replace(str, @"\s+", " ").Trim();
-            str = Regex.Replace(str, @"\s", "-");
-            return str;
+            return Ok(new { message = $"Đã {(blog.IsPublished ? "xuất bản" : "ẩn")} bài viết.", isPublished = blog.IsPublished });
         }
     }
 }
