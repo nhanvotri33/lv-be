@@ -155,7 +155,7 @@ namespace ECommerce1.Controllers
             _context.Blogs.Add(blog);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction(nameof(GetBySlug), new { id = blog.Id }, BlogControllerHelpers.MapToResponse(blog));
+            return CreatedAtAction(nameof(GetBySlug), new { slug = blog.Slug }, BlogControllerHelpers.MapToResponse(blog));
         }
 
         // PUT: api/Blog/{id} cập nhật từ id
