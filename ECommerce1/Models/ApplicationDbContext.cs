@@ -45,6 +45,8 @@ namespace ECommerce.Models
         public DbSet<Ward> Wards { get; set; }
         public DbSet<Payment> Payments { get; set; }
         public DbSet<AuditLog> AuditLogs { get; set; }
+        public DbSet<ReturnRequest> ReturnRequests { get; set; }
+        public DbSet<ReturnItem> ReturnItems { get; set; }
         public DbSet<CategoryBrandDefault> CategoryBrandDefaults { get; set; }
         public DbSet<Banner> Banners { get; set; }
         public DbSet<Blog> Blogs { get; set; }
