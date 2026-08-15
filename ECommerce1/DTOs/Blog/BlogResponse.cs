@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: BlogResponse.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module BlogResponse
+// ==========================================================================
 using System;
 
 namespace ECommerce1.DTOs.Blog

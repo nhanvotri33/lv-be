@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: Banner.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module Banner
+// ==========================================================================
 using System;
 using System.ComponentModel.DataAnnotations;
 

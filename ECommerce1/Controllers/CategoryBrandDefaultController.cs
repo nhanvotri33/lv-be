@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: CategoryBrandDefaultController.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module CategoryBrandDefaultController
+// ==========================================================================
       using ECommerce.Models;
 using ECommerce1.DTOs.CategoryBrandDefault;
 using Microsoft.AspNetCore.Authorization;
@@ -22,6 +26,7 @@ namespace ECommerce1.Controllers
 
         // GET: api/CategoryBrandDefault/category/5
         [HttpGet("category/{categoryId}")]
+        // [Hàm thực thi nghiệp vụ]: `GetByCategory` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GetByCategory(int categoryId)
         {
             var defaults = await _context.CategoryBrandDefaults
@@ -41,11 +46,13 @@ namespace ECommerce1.Controllers
                 })
                 .ToListAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(defaults);
         }
 
         // GET: api/CategoryBrandDefault/category/5/brand/3
         [HttpGet("category/{categoryId}/brand/{brandId}")]
+        // [Hàm thực thi nghiệp vụ]: `GetByCategoryAndBrand` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GetByCategoryAndBrand(int categoryId, int brandId)
         {
             var match = await _context.CategoryBrandDefaults
@@ -55,9 +62,11 @@ namespace ECommerce1.Controllers
 
             if (match == null)
             {
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound("Không tìm thấy cấu hình thông số mặc định cho cặp Danh mục và Thương hiệu này.");
             }
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(new CategoryBrandDefaultResponse
             {
                 Id = match.Id,
@@ -74,22 +83,28 @@ namespace ECommerce1.Controllers
         // POST: api/CategoryBrandDefault
         [HttpPost]
         [Authorize(Roles = "Admin")]
+        // [Hàm thực thi nghiệp vụ]: `Upsert` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> Upsert([FromBody] CategoryBrandDefaultRequest request)
         {
             if (!ModelState.IsValid)
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest(ModelState);
             }
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var categoryExists = await _context.Categories.AnyAsync(c => c.Id == request.CategoryId);
             if (!categoryExists)
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Danh mục không tồn tại.");
             }
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var brandExists = await _context.Brands.AnyAsync(b => b.Id == request.BrandId);
             if (!brandExists)
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Thương hiệu không tồn tại.");
             }
 
@@ -101,8 +116,10 @@ namespace ECommerce1.Controllers
                 existing.DefaultSpecs = request.DefaultSpecs;
                 existing.UpdatedAt = DateTime.UtcNow;
                 
+                // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
                 
+                // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                 return Ok(new { message = "Cập nhật cấu hình mặc định thành công.", id = existing.Id });
             }
             else
@@ -116,9 +133,12 @@ namespace ECommerce1.Controllers
                     UpdatedAt = DateTime.UtcNow
                 };
 
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 _context.CategoryBrandDefaults.Add(newDefault);
+                // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
 
+                // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                 return Ok(new { message = "Thêm cấu hình mặc định thành công.", id = newDefault.Id });
             }
         }
@@ -126,17 +146,23 @@ namespace ECommerce1.Controllers
         // DELETE: api/CategoryBrandDefault/5
         [HttpDelete("{id}")]
         [Authorize(Roles = "Admin")]
+        // [Hàm thực thi nghiệp vụ]: `Delete` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> Delete(int id)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var match = await _context.CategoryBrandDefaults.FindAsync(id);
             if (match == null)
             {
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound("Không tìm thấy cấu hình cần xóa.");
             }
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             _context.CategoryBrandDefaults.Remove(match);
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(new { message = "Xóa cấu hình mặc định thành công." });
         }
     }

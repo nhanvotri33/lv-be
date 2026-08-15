@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: Review.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module Review
+// ==========================================================================
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;

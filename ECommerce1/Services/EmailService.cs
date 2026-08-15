@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: EmailService.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module EmailService
+// ==========================================================================
 using ECommerce.Models;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;

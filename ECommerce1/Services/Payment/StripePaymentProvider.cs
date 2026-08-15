@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: StripePaymentProvider.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module StripePaymentProvider
+// ==========================================================================
 using ECommerce.Models;
 using Microsoft.Extensions.Configuration;
 using Stripe;
@@ -24,6 +28,7 @@ namespace ECommerce1.Services.Payment
 
         public string ProviderName => "stripe";
 
+        // [Hàm thực thi nghiệp vụ]: `CreateCheckoutSessionAsync` - Xử lý logic và luồng dữ liệu
         public async Task<string> CreateCheckoutSessionAsync(Order order, string successUrl, string cancelUrl)
         {
             var apiKey = _configuration["Stripe:SecretKey"];
@@ -68,6 +73,7 @@ namespace ECommerce1.Services.Payment
             return session.Id;
         }
 
+        // [Hàm thực thi nghiệp vụ]: `VerifySessionAsync` - Xử lý logic và luồng dữ liệu
         public async Task<PaymentVerificationResult> VerifySessionAsync(string sessionId)
         {
             if (sessionId.StartsWith("mock_stripe_session_"))
@@ -101,6 +107,7 @@ namespace ECommerce1.Services.Payment
             };
         }
 
+        // [Hàm thực thi nghiệp vụ]: `RefundAsync` - Xử lý logic và luồng dữ liệu
         public async Task<bool> RefundAsync(string transactionId, decimal amount)
         {
             if (string.IsNullOrEmpty(transactionId))

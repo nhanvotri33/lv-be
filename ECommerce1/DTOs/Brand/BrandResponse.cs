@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: BrandResponse.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module BrandResponse
+// ==========================================================================
 using System;
 
 namespace ECommerce1.DTOs.Brand

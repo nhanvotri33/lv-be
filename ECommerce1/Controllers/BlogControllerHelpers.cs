@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: BlogControllerHelpers.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module BlogControllerHelpers
+// ==========================================================================
 using ECommerce.Models;
 using ECommerce1.Controllers;
 using ECommerce1.DTOs.Blog;

@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: ChatCompletionAiService.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module ChatCompletionAiService
+// ==========================================================================
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -55,6 +59,7 @@ namespace ECommerce1.Services.Ai
 
         public bool IsConfigured => !string.IsNullOrWhiteSpace(_options.ApiKey) && _options.ApiKey != "YOUR_OPENAI_API_KEY";
 
+        // [Hàm thực thi nghiệp vụ]: `ChatAsync` - Xử lý logic và luồng dữ liệu
         public async Task<string> ChatAsync(string userMessage, IReadOnlyList<ChatMessageDto> history, string productContext, CancellationToken cancellationToken = default)
         {
             if (!IsConfigured)

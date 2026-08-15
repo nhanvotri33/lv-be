@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: Category.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module Category
+// ==========================================================================
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;

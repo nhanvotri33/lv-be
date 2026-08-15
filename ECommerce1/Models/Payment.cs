@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: Payment.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module Payment
+// ==========================================================================
 using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;

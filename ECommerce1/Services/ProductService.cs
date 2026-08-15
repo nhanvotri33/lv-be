@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: ProductService.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module ProductService
+// ==========================================================================
 using ECommerce.Models;
 using ECommerce1.DTOs.Product;
 using ECommerce1.Helpers;
@@ -22,6 +26,7 @@ namespace ECommerce1.Services
 
         private async Task<HashSet<int>> GetValidCategoryIdsAsync()
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var allCats = await _context.Categories.ToListAsync();
             var validIds = new HashSet<int>();
             
@@ -48,6 +53,7 @@ namespace ECommerce1.Services
 
         private async Task<HashSet<int>> GetCategoryDescendantsAsync(int parentId)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var allCats = await _context.Categories.ToListAsync();
             var result = new HashSet<int> { parentId };
             
@@ -184,6 +190,7 @@ namespace ECommerce1.Services
             }).ToList();
         }
 
+        // [Hàm thực thi nghiệp vụ]: `GetByIdAsync` - Xử lý logic và luồng dữ liệu
         public async Task<ProductResponse> GetByIdAsync(int id)
         {
             var product = await _context.Products
@@ -231,8 +238,10 @@ namespace ECommerce1.Services
             };
         }
 
+        // [Hàm thực thi nghiệp vụ]: `CreateAsync` - Xử lý logic và luồng dữ liệu
         public async Task<int> CreateAsync(ProductRequest request)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             if (!await _context.Categories.AnyAsync(c => c.Id == request.CategoryId))
                 throw new ArgumentException("Category không tồn tại.");
 
@@ -251,6 +260,7 @@ namespace ECommerce1.Services
                 productCode = CodeGeneratorHelper.GenerateProductCode(request.Name, 20);
             }
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             if (await _context.Products.AnyAsync(p => p.ProductCode == productCode))
                 throw new ArgumentException("Mã này đã tồn tại.");
 
@@ -277,7 +287,9 @@ namespace ECommerce1.Services
                 VideoUrl = request.VideoUrl
             };
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             _context.Products.Add(newProduct);
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
             // Tự động sinh Phiếu nhập kho ban đầu (Xử lý ngầm) nếu tồn kho > 0
@@ -298,7 +310,9 @@ namespace ECommerce1.Services
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
                 };
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 _context.ProductVariants.Add(defaultVariant);
+                // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
 
                 // Tạo bản ghi Phiếu nhập kho ban đầu
@@ -312,7 +326,9 @@ namespace ECommerce1.Services
                     IsReverted = false,
                     CreatedAt = DateTime.UtcNow
                 };
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 _context.InventoryTransactions.Add(initTx);
+                // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
 
                 // Lưu vết AuditLog
@@ -324,7 +340,9 @@ namespace ECommerce1.Services
                     NewValues = $"Khởi tạo tồn kho ban đầu: +{newProduct.TotalStock} sản phẩm cho '{newProduct.Name}'",
                     Timestamp = DateTime.UtcNow
                 };
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 _context.AuditLogs.Add(auditLog);
+                // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
             }
 
@@ -333,10 +351,12 @@ namespace ECommerce1.Services
 
         public async Task UpdateAsync(int id, ProductRequest request)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var product = await _context.Products.FindAsync(id);
             if (product == null)
                 throw new KeyNotFoundException("Không tìm thấy sản phẩm.");
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             if (!await _context.Categories.AnyAsync(c => c.Id == request.CategoryId))
                 throw new ArgumentException("Category không tồn tại.");
 
@@ -350,6 +370,7 @@ namespace ECommerce1.Services
                 productCode = CodeGeneratorHelper.GenerateProductCode(request.Name, 20);
             }
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             if (await _context.Products.AnyAsync(p => p.ProductCode == productCode && p.Id != id))
                 throw new ArgumentException("Mã này đã tồn tại.");
 
@@ -408,11 +429,13 @@ namespace ECommerce1.Services
                 }
             }
 
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
         }
 
         public async Task DeleteAsync(int id)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var product = await _context.Products.FindAsync(id);
             if (product == null)
                 throw new KeyNotFoundException("Không tìm thấy sản phẩm.");
@@ -420,6 +443,7 @@ namespace ECommerce1.Services
             product.IsActive = false;
             product.UpdatedAt = DateTime.UtcNow;
 
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
         }
 

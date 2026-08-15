@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: ProductVariantService.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module ProductVariantService
+// ==========================================================================
 using ECommerce.Models;
 using ECommerce1.DTOs.ProductVariant;
 using Microsoft.EntityFrameworkCore;
@@ -20,8 +24,10 @@ namespace ECommerce1.Services
             _fileService = fileService;
         }
 
+        // [Hàm thực thi nghiệp vụ]: `GetAllAsync` - Xử lý logic và luồng dữ liệu
         public async Task<IEnumerable<ProductVariantResponse>> GetAllAsync(int? productId)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var query = _context.ProductVariants.AsQueryable();
 
             if (productId.HasValue)
@@ -52,8 +58,10 @@ namespace ECommerce1.Services
             return variants;
         }
 
+        // [Hàm thực thi nghiệp vụ]: `GetByIdAsync` - Xử lý logic và luồng dữ liệu
         public async Task<ProductVariantResponse> GetByIdAsync(int id)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var pv = await _context.ProductVariants.FindAsync(id);
             if (pv == null)
                 throw new KeyNotFoundException("Không tìm thấy biến thể (Variant) này.");
@@ -79,6 +87,7 @@ namespace ECommerce1.Services
 
         public async Task CreateAsync(ProductVariantRequest request)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             if (!await _context.Products.AnyAsync(p => p.Id == request.ProductId))
                 throw new KeyNotFoundException("Sản phẩm gốc (ProductId) không tồn tại.");
 
@@ -88,9 +97,11 @@ namespace ECommerce1.Services
                 ? request.Sku.Trim().ToUpper() 
                 : await GenerateSkuAsync(request.ProductId, request.Attributes);
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             if (!string.IsNullOrEmpty(finalSku) && await _context.ProductVariants.AnyAsync(pv => pv.Sku.ToUpper() == finalSku))
                 throw new ArgumentException($"Mã SKU '{finalSku}' đã tồn tại ở một biến thể khác.");
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var product = await _context.Products.FindAsync(request.ProductId);
             var imageId = !string.IsNullOrEmpty(request.ImageId) ? request.ImageId : (product?.ThumbnailImage ?? "");
 
@@ -110,7 +121,9 @@ namespace ECommerce1.Services
                 IsActive = request.IsActive
             };
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             _context.ProductVariants.Add(newVariant);
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
             // Tự động sinh Phiếu nhập kho ban đầu (Xử lý ngầm) nếu tồn kho biến thể > 0
@@ -126,7 +139,9 @@ namespace ECommerce1.Services
                     IsReverted = false,
                     CreatedAt = DateTime.UtcNow
                 };
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 _context.InventoryTransactions.Add(initTx);
+                // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
 
                 var auditLog = new AuditLog
@@ -137,7 +152,9 @@ namespace ECommerce1.Services
                     NewValues = $"Khởi tạo tồn kho ban đầu: +{newVariant.TotalStock} cho biến thể '{newVariant.Name}' (SKU: {newVariant.Sku})",
                     Timestamp = DateTime.UtcNow
                 };
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 _context.AuditLogs.Add(auditLog);
+                // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
             }
 
@@ -150,6 +167,7 @@ namespace ECommerce1.Services
                 throw new ArgumentException("Danh sách biến thể trống.");
 
             var productId = requests.First().ProductId;
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var product = await _context.Products.Include(p => p.Brand).FirstOrDefaultAsync(p => p.Id == productId);
             if (product == null)
                 throw new KeyNotFoundException("Sản phẩm gốc không tồn tại.");
@@ -197,6 +215,7 @@ namespace ECommerce1.Services
                 }
                 finalSku = finalSku.Trim().ToUpper();
 
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 if (!string.IsNullOrEmpty(finalSku) && (newVariants.Any(nv => nv.Sku == finalSku) || await _context.ProductVariants.AnyAsync(pv => pv.Sku.ToUpper() == finalSku)))
                     throw new ArgumentException($"Mã SKU '{finalSku}' bị trùng lặp.");
 
@@ -219,19 +238,23 @@ namespace ECommerce1.Services
                 });
             }
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             _context.ProductVariants.AddRange(newVariants);
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
             await SyncParentProductStockAsync(productId);
         }
 
         public async Task UpdateAsync(int id, ProductVariantRequest request)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var variant = await _context.ProductVariants.FindAsync(id);
             if (variant == null)
                 throw new KeyNotFoundException("Không tìm thấy biến thể sản phẩm.");
 
             if (variant.ProductId != request.ProductId)
             {
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 if (!await _context.Products.AnyAsync(p => p.Id == request.ProductId))
                     throw new KeyNotFoundException("Sản phẩm gốc (ProductId) không tồn tại.");
             }
@@ -242,6 +265,7 @@ namespace ECommerce1.Services
                 ? request.Sku.Trim().ToUpper() 
                 : await GenerateSkuAsync(request.ProductId, request.Attributes);
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             if (!string.IsNullOrEmpty(finalSku) && await _context.ProductVariants.AnyAsync(pv => pv.Sku.ToUpper() == finalSku && pv.Id != id))
                 throw new ArgumentException($"Mã SKU '{finalSku}' đã tồn tại ở một biến thể khác.");
 
@@ -253,6 +277,7 @@ namespace ECommerce1.Services
             int oldProductId = variant.ProductId;
             int newProductId = request.ProductId;
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var product = await _context.Products.FindAsync(request.ProductId);
             var imageId = !string.IsNullOrEmpty(request.ImageId) ? request.ImageId : (product?.ThumbnailImage ?? "");
 
@@ -267,6 +292,7 @@ namespace ECommerce1.Services
             variant.IsActive = request.IsActive;
             variant.UpdatedAt = DateTime.UtcNow;
 
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
             await SyncParentProductStockAsync(oldProductId);
             if (newProductId != oldProductId)
@@ -277,6 +303,7 @@ namespace ECommerce1.Services
 
         public async Task SyncAsync(int productId, List<ProductVariantRequest> requests)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var product = await _context.Products.Include(p => p.Brand).FirstOrDefaultAsync(p => p.Id == productId);
             if (product == null)
                 throw new KeyNotFoundException("Sản phẩm gốc không tồn tại.");
@@ -302,6 +329,7 @@ namespace ECommerce1.Services
                 {
                     _fileService.DeleteImage(variant.ImageId);
                 }
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 _context.ProductVariants.Remove(variant);
             }
 
@@ -350,6 +378,7 @@ namespace ECommerce1.Services
                     var existing = existingVariants.FirstOrDefault(ev => ev.Id == request.Id);
                     if (existing != null)
                     {
+                        // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                         if (existing.Sku.ToUpper() != finalSku && await _context.ProductVariants.AnyAsync(pv => pv.Sku.ToUpper() == finalSku && pv.Id != existing.Id))
                             throw new ArgumentException($"Mã SKU '{finalSku}' đã tồn tại ở một biến thể khác.");
 
@@ -392,7 +421,9 @@ namespace ECommerce1.Services
                         SpecsOverride = request.SpecsOverride,
                         IsActive = request.IsActive
                     };
+                    // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                     _context.ProductVariants.Add(newV);
+                    // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                     await _context.SaveChangesAsync();
 
                     if (newV.TotalStock > 0)
@@ -407,6 +438,7 @@ namespace ECommerce1.Services
                             IsReverted = false,
                             CreatedAt = DateTime.UtcNow
                         };
+                        // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                         _context.InventoryTransactions.Add(initTx);
 
                         var auditLog = new AuditLog
@@ -417,11 +449,13 @@ namespace ECommerce1.Services
                             NewValues = $"Khởi tạo tồn kho ban đầu: +{newV.TotalStock} cho biến thể '{newV.Name}' (SKU: {newV.Sku})",
                             Timestamp = DateTime.UtcNow
                         };
+                        // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                         _context.AuditLogs.Add(auditLog);
                     }
                 }
             }
 
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
             await SyncParentProductStockAsync(productId);
         }
@@ -444,7 +478,9 @@ namespace ECommerce1.Services
             }
 
             int productId = variant.ProductId;
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             _context.ProductVariants.Remove(variant);
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
             await SyncParentProductStockAsync(productId);
         }
@@ -600,6 +636,7 @@ namespace ECommerce1.Services
         }
         private async Task SyncParentProductStockAsync(int productId)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var product = await _context.Products.FindAsync(productId);
             if (product != null)
             {
@@ -609,6 +646,7 @@ namespace ECommerce1.Services
                 
                 product.TotalStock = variants.Sum(pv => pv.TotalStock);
                 product.ReservedStock = variants.Sum(pv => pv.ReservedStock);
+                // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
             }
         }

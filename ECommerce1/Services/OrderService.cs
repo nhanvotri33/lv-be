@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: OrderService.cs
+// MỤC ĐÍCH: Tầng Dịch Vụ (Service Layer) chứa toàn bộ logic nghiệp vụ cốt lõi của đơn hàng: Giữ kho, Trừ kho, Tính toán giá, Áp mã giảm giá, Đổi trả & Gửi email ngầm.
+// ==========================================================================
 using ECommerce.Models;
 using ECommerce1.DTOs.Order;
 using Microsoft.EntityFrameworkCore;
@@ -31,6 +35,7 @@ namespace ECommerce1.Services
             _scopeFactory = scopeFactory;
         }
 
+        // [Hàm thực thi nghiệp vụ]: `GetMyOrdersAsync` - Xử lý logic và luồng dữ liệu
         public async Task<IEnumerable<OrderResponse>> GetMyOrdersAsync(Guid userId)
         {
             return await _context.Orders
@@ -89,6 +94,7 @@ namespace ECommerce1.Services
                 .ToListAsync();
         }
 
+        // [Hàm thực thi nghiệp vụ]: `GetAllOrdersAsync` - Xử lý logic và luồng dữ liệu
         public async Task<IEnumerable<OrderResponse>> GetAllOrdersAsync()
         {
             return await _context.Orders
@@ -159,6 +165,7 @@ namespace ECommerce1.Services
         /// </summary>
         public async Task<object> CheckoutAsync(Guid userId, CheckoutRequest request)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             using var transaction = await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
             try
             {
@@ -316,6 +323,7 @@ namespace ECommerce1.Services
 
                     // Kiểm tra User đã dùng mã này bao nhiêu lần 
                     int maxAllowed = appliedPromotion.MaxPerUser.HasValue && appliedPromotion.MaxPerUser.Value > 0 ? appliedPromotion.MaxPerUser.Value : 1;
+                    // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                     int userUsageCount = await _context.PromotionUsages.CountAsync(pu => pu.PromotionId == appliedPromotion.Id && pu.UserId == userId);
                     if (userUsageCount >= maxAllowed)
                         throw new ArgumentException($"Bạn đã sử dụng mã giảm giá này tối đa {maxAllowed} lần cho phép.");
@@ -402,6 +410,7 @@ namespace ECommerce1.Services
 
                     await ECommerce1.Services.VietnamLocationService.EnsureLocationExistsAsync(_context, request.WardId);
 
+                    // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                     var ward = await _context.Wards.Include(w => w.Province).FirstOrDefaultAsync(w => w.Id == request.WardId);
 
                     receiverName = request.RecipientName;
@@ -445,7 +454,7 @@ namespace ECommerce1.Services
                         shippingProvince.Contains("Hà Nội", StringComparison.OrdinalIgnoreCase) || 
                         shippingProvince.Contains("Đà Nẵng", StringComparison.OrdinalIgnoreCase))
                     {
-                        baseFee = 22000;
+                        baseFee = 100000; //shop tu giao hang, bam gom phi bao hiem roi vo 
                     }
                     shippingFee = baseFee;
                 }
@@ -497,6 +506,7 @@ namespace ECommerce1.Services
                     ShippingCarrier = request.ShippingCarrier ?? (isAhamoveCalculated ? "Ahamove (Giao Siêu Tốc)" : "Giao Hàng Tiêu Chuẩn"),
                     ActualShippingFee = shippingFee
                 };
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 _context.Orders.Add(newOrder);
                 await _context.SaveChangesAsync(); // Lưu để lấy Order.Id
 
@@ -520,6 +530,7 @@ namespace ECommerce1.Services
                         WarrantyPrice = item.Warranty != null ? item.Warranty.BasePrice : 0,
                         InspectionStatus = "NOT_REQUIRED" // Đơn mua kèm máy tại shop mặc định đạt chuẩn
                     };
+                    // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                     _context.OrderItems.Add(orderItem);
                     orderItemMap[item.Id] = orderItem;
 
@@ -545,6 +556,7 @@ namespace ECommerce1.Services
                         UserId = userId,
                         UsedAt = DateTime.UtcNow
                     };
+                    // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                     _context.PromotionUsages.Add(usage);
                     
                     // Tăng số lượng đã sử dụng của mã giảm giá
@@ -610,6 +622,7 @@ namespace ECommerce1.Services
 
         public async Task CancelOrderAsync(int id, Guid? userId, string? phoneNumber)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
@@ -662,6 +675,7 @@ namespace ECommerce1.Services
                     userObj.RewardPoints += order.PointsRedeemed;
                 }
 
+                // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
             }
@@ -681,6 +695,7 @@ namespace ECommerce1.Services
         /// </summary>
         public async Task UpdateOrderStatusAsync(int id, int newStatusId)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
@@ -694,6 +709,7 @@ namespace ECommerce1.Services
                 if (order == null)
                     throw new KeyNotFoundException("Không tìm thấy đơn hàng.");
 
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 var statusExists = await _context.OrderStatuses.AnyAsync(s => s.Id == newStatusId);
                 if (!statusExists)
                     throw new ArgumentException("Trạng thái đơn hàng không hợp lệ.");
@@ -762,6 +778,7 @@ namespace ECommerce1.Services
 
                 foreach (var productId in affectedProductIds)
                 {
+                    // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                     var product = await _context.Products.FindAsync(productId);
                     if (product != null)
                     {
@@ -779,6 +796,7 @@ namespace ECommerce1.Services
                 // - AccumulatedPoints: Điểm tích lũy trọn đời chỉ tăng, không giảm khi đổi quà, dùng xét Hạng thành viên (Đồng/Bạc/Vàng).
                 if (newStatusId == 4 && oldStatusId != 4)
                 {
+                    // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                     var user = await _context.Users.FindAsync(order.UserId);
                     if (user != null)
                     {
@@ -795,6 +813,7 @@ namespace ECommerce1.Services
                 // - Hệ thống chỉ cần hoàn trả lại số điểm cũ mà khách đã tiêu dùng (PointsRedeemed) khi thanh toán đơn hàng này.
                 if ((newStatusId == 5 || newStatusId == 6 || newStatusId == 7) && (oldStatusId == 1 || oldStatusId == 2 || oldStatusId == 3))
                 {
+                    // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                     var user = await _context.Users.FindAsync(order.UserId);
                     if (user != null && order.PointsRedeemed > 0)
                     {
@@ -881,6 +900,7 @@ namespace ECommerce1.Services
                 }
 
                 order.OrderStatusId = newStatusId;
+                // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
 
@@ -935,6 +955,7 @@ namespace ECommerce1.Services
             }
         }
 
+        // [Hàm thực thi nghiệp vụ]: `TrackOrderAsync` - Xử lý logic và luồng dữ liệu
         public async Task<OrderResponse> TrackOrderAsync(int id, string phoneNumber)
         {
             if (string.IsNullOrEmpty(phoneNumber))
@@ -1001,6 +1022,7 @@ namespace ECommerce1.Services
             };
         }
 
+        // [Hàm thực thi nghiệp vụ]: `ShipWithAhamoveAsync` - Xử lý logic và luồng dữ liệu
         public async Task<OrderResponse> ShipWithAhamoveAsync(int orderId)
         {
             var order = await _context.Orders
@@ -1038,6 +1060,7 @@ namespace ECommerce1.Services
             order.AhamoveSharedLink = ahamoveResponse.SharedLink;
             order.ActualShippingFee = ahamoveResponse.TotalFee;
             order.OrderStatusId = 3; // 3 = Shipping
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
             // Gửi Email thông báo trạng thái Đang giao hàng qua Ahamove
@@ -1109,11 +1132,13 @@ namespace ECommerce1.Services
         private async Task<HashSet<int>> GetAncestorCategoryIds(int categoryId)
         {
             var result = new HashSet<int> { categoryId };
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var current = await _context.Categories.FindAsync(categoryId);
 
             while (current?.ParentId != null)
             {
                 result.Add(current.ParentId.Value);
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 current = await _context.Categories.FindAsync(current.ParentId.Value);
             }
 

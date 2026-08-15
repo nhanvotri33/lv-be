@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: OrderItemController.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module OrderItemController
+// ==========================================================================
 using ECommerce.Models;
 using ECommerce1.DTOs.Order;
 using Microsoft.AspNetCore.Authorization;
@@ -22,6 +26,7 @@ namespace ECommerce1.Controllers
 
         // Xem các mặt hàng trong 1 đơn hàng cụ thể
         [HttpGet("by-order/{orderId}")]
+        // [Hàm thực thi nghiệp vụ]: `GetItemsByOrder` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GetItemsByOrder(int orderId)
         {
             var items = await _context.OrderItems
@@ -40,8 +45,10 @@ namespace ECommerce1.Controllers
                 .ToListAsync();
 
             if (!items.Any())
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound("Không tìm thấy dữ liệu hoặc đơn hàng không tồn tại.");
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(items);
         }
     }

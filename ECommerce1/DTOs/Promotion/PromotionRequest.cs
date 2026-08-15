@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: PromotionRequest.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module PromotionRequest
+// ==========================================================================
 using System;
 
 namespace ECommerce1.DTOs.Promotion

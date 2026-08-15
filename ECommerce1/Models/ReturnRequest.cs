@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: ReturnRequest.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module ReturnRequest
+// ==========================================================================
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;

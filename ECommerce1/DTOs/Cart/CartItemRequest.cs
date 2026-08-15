@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: CartItemRequest.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module CartItemRequest
+// ==========================================================================
 namespace ECommerce1.DTOs.Cart
 {
     public class CartItemRequest

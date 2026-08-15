@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: ChatbotController.cs
+// MỤC ĐÍCH: API Controller kết nối Chatbot AI trợ lý tư vấn sản phẩm (OpenAI GPT).
+// ==========================================================================
 using ECommerce.Models;
 using ECommerce1.Services.Ai;
 using Microsoft.AspNetCore.Mvc;
@@ -51,16 +55,20 @@ namespace ECommerce1.Controllers
             _aiService = aiService;
         }
 
+        // [API Endpoint POST [Route: `chat`]]: Tiếp nhận và xử lý yêu cầu từ Client
         [HttpPost("chat")]
+        // [Hàm thực thi nghiệp vụ]: `Chat` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> Chat([FromBody] ChatbotRequest request, CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(request.Message))
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Vui lòng nhập nội dung cần tư vấn.");
 
             // 1. ĐÓNG HỘI THOẠI: khách chỉ chào kết ("cảm ơn", "bye", "end") thì chào lại luôn,
             // không gọi API OpenAI và không hỏi thêm nước đôi.
             if (IsFarewell(request.Message))
             {
+                // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                 return Ok(new ChatbotResponse
                 {
                     Reply = "Dạ cảm ơn bạn đã ghé PhoneShop! Chúc bạn một ngày tốt lành, khi nào cần tư vấn điện thoại hay phụ kiện thì cứ nhắn mình nhé! 😊"
@@ -70,6 +78,7 @@ namespace ECommerce1.Controllers
             // 2. CHẶN NGAY CÂU HỎI NGOÀI LỀ Ở BACKEND (Không gọi API OpenAI -> Tiết kiệm 100% chi phí Token)
             if (IsOffTopicQuery(request.Message))
             {
+                // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                 return Ok(new ChatbotResponse
                 {
                     Reply = "Dạ xin lỗi bạn, mình là Trợ lý AI của PhoneShop nên chỉ hỗ trợ tư vấn các thông tin về điện thoại, phụ kiện, khuyến mãi và chính sách mua hàng của cửa hàng thôi ạ! Bạn cần mình hỗ trợ thông tin sản phẩm hay chương trình giảm giá nào không ạ?"
@@ -84,10 +93,12 @@ namespace ECommerce1.Controllers
                 // FALLBACK THÔNG MINH KHI CHƯA NẠP KEY AI:
                 // Tìm kiếm trực tiếp sản phẩm trong CSDL và trả về thông tin giá cả, tồn kho cho người dùng
                 var localReply = BuildLocalDatabaseReply(request.Message, productContext);
+                // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                 return Ok(new ChatbotResponse { Reply = localReply });
             }
 
             var reply = await _aiService.ChatAsync(request.Message, request.History, productContext, cancellationToken);
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(new ChatbotResponse { Reply = reply });
         }
 

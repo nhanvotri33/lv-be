@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: CategoryRequest.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module CategoryRequest
+// ==========================================================================
 namespace ECommerce1.DTOs.Category
 {
     public class CategoryRequest

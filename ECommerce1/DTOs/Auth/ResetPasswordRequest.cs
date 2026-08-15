@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: ResetPasswordRequest.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module ResetPasswordRequest
+// ==========================================================================
 namespace ECommerce1.DTOs.Auth
 {
     public class ForgotPasswordRequest

@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: InventoryTransactionController.cs
+// MỤC ĐÍCH: API Controller quản lý nhập - xuất - hoàn tác kho hàng và truy vết lịch sử giao dịch kho.
+// ==========================================================================
 using ECommerce.Models;
 using ECommerce1.DTOs.InventoryTransaction;
 using Microsoft.AspNetCore.Authorization;
@@ -25,6 +29,7 @@ namespace ECommerce1.Controllers
         // ================= GET: Lấy lịch sử giao dịch kho (ADMIN) =================
         [HttpGet]
         [Authorize(Roles = "Admin")]
+        // [Hàm thực thi nghiệp vụ]: `GetAll` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GetAll()
         {
             var transactions = await _context.InventoryTransactions
@@ -99,12 +104,14 @@ namespace ECommerce1.Controllers
 
             response = response.OrderByDescending(t => t.CreatedAt).ToList();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(response);
         }
 
         // ================= POST: Thực hiện giao dịch kho (ADMIN) =================
         [HttpPost]
         [Authorize(Roles = "Admin")]
+        // [Hàm thực thi nghiệp vụ]: `Create` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> Create([FromBody] InventoryTransactionRequest request)
         {
             var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -132,6 +139,7 @@ namespace ECommerce1.Controllers
 
             if (variant == null)
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Không tìm thấy biến thể hoặc sản phẩm hợp lệ.");
             }
 
@@ -146,6 +154,7 @@ namespace ECommerce1.Controllers
             // Kiểm tra tồn kho nếu xuất kho
             if (actualQtyChange < 0 && (variant.TotalStock + actualQtyChange) < 0)
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest($"Tồn kho hiện tại của '{variant.Name}' không đủ ({variant.TotalStock} sản phẩm).");
             }
 
@@ -195,16 +204,20 @@ namespace ECommerce1.Controllers
 
                 if (targetOrderId > 0)
                 {
+                    // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                     var orderToUpdate = await _context.Orders.FindAsync(targetOrderId);
                     if (orderToUpdate != null)
                     {
                         orderToUpdate.OrderStatusId = 7; // 7 = Refunded (Đổi trả / Hoàn tiền)
+                        // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                         _context.Orders.Update(orderToUpdate);
                     }
                 }
             }
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             _context.InventoryTransactions.Add(transaction);
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
             // Xử lý lưu lô hàng vào Stock
@@ -222,7 +235,9 @@ namespace ECommerce1.Controllers
                     ReceivedDate = DateTime.UtcNow,
                     ReceivingDetailId = transaction.Id
                 };
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 _context.Stocks.Add(newDetail);
+                // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
             }
             else if (actualQtyChange < 0)
@@ -248,6 +263,7 @@ namespace ECommerce1.Controllers
                          lot.QuantityRemaining = 0;
                      }
                  }
+                 // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                  await _context.SaveChangesAsync();
             }
 
@@ -258,12 +274,14 @@ namespace ECommerce1.Controllers
                 "UPDATE Products SET IsActive = CAST(0 AS BIT) WHERE Id = {0} AND (TotalStock - ReservedStock) <= 0;",
                 variant.ProductId);
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(new { Message = "Thực hiện giao dịch kho thành công.", TransactionId = transaction.Id, NewStock = variant.TotalStock });
         }
 
         // ================= PUT: Hoàn tác giao dịch kho (ADMIN) =================
         [HttpPut("{id}/revert")]
         [Authorize(Roles = "Admin")]
+        // [Hàm thực thi nghiệp vụ]: `Revert` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> Revert(int id)
         {
             var transaction = await _context.InventoryTransactions
@@ -273,17 +291,20 @@ namespace ECommerce1.Controllers
 
             if (transaction == null)
             {
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound("Không tìm thấy giao dịch.");
             }
 
             if (transaction.IsReverted)
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Giao dịch này đã được hoàn tác trước đó.");
             }
 
             var variant = transaction.ProductVariant;
             if (variant == null)
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Không tìm thấy thông tin sản phẩm liên kết với giao dịch.");
             }
 
@@ -293,6 +314,7 @@ namespace ECommerce1.Controllers
             // Nếu đảo ngược dẫn đến tồn kho âm, cảnh báo
             if (qtyToRevert < 0 && (variant.TotalStock + qtyToRevert) < 0)
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest($"Không thể hoàn tác. Số lượng tồn kho sau hoàn tác của '{variant.Name}' sẽ bị âm.");
             }
 
@@ -322,12 +344,14 @@ namespace ECommerce1.Controllers
                     ReceivedDate = DateTime.UtcNow,
                     ReceivingDetailId = transaction.Id
                 };
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 _context.Stocks.Add(newDetail);
             }
 
             transaction.IsReverted = true;
             transaction.Note += " (Đã hoàn tác)";
 
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
             // Cập nhật tồn kho tổng ở Product atomically từ tổng các biến thể để tránh race condition
@@ -337,12 +361,14 @@ namespace ECommerce1.Controllers
                 "UPDATE Products SET IsActive = CAST(0 AS BIT) WHERE Id = {0} AND (TotalStock - ReservedStock) <= 0;",
                 variant.ProductId);
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(new { Message = "Hoàn tác giao dịch kho thành công.", NewStock = variant.TotalStock });
         }
 
         // ================= GET: Xem tồn kho chi tiết (ADMIN) =================
         [HttpGet("stock")]
         [Authorize(Roles = "Admin")]
+        // [Hàm thực thi nghiệp vụ]: `GetStockDetails` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GetStockDetails()
         {
             var stocks = await _context.Stocks
@@ -395,6 +421,7 @@ namespace ECommerce1.Controllers
                 };
             }).ToList();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(response);
         }
     }

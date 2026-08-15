@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: BrandRequest.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module BrandRequest
+// ==========================================================================
 using System.ComponentModel.DataAnnotations;
 
 namespace ECommerce1.DTOs.Brand

@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: MomoPaymentProvider.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module MomoPaymentProvider
+// ==========================================================================
 using ECommerce.Models;
 using System;
 using System.Threading.Tasks;
@@ -8,6 +12,7 @@ namespace ECommerce1.Services.Payment
     {
         public string ProviderName => "momo";
 
+        // [Hàm thực thi nghiệp vụ]: `CreateCheckoutSessionAsync` - Xử lý logic và luồng dữ liệu
         public Task<string> CreateCheckoutSessionAsync(Order order, string successUrl, string cancelUrl)
         {
             // Trả về một Session ID giả lập cho MoMo
@@ -15,6 +20,7 @@ namespace ECommerce1.Services.Payment
             return Task.FromResult(mockSessionId);
         }
 
+        // [Hàm thực thi nghiệp vụ]: `VerifySessionAsync` - Xử lý logic và luồng dữ liệu
         public Task<PaymentVerificationResult> VerifySessionAsync(string sessionId)
         {
             // Giả lập thanh toán MoMo luôn thành công
@@ -26,6 +32,7 @@ namespace ECommerce1.Services.Payment
             });
         }
 
+        // [Hàm thực thi nghiệp vụ]: `RefundAsync` - Xử lý logic và luồng dữ liệu
         public Task<bool> RefundAsync(string transactionId, decimal amount)
         {
             // Giả lập hoàn tiền MoMo thành công

@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: AuditLogDtos.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module AuditLogDtos
+// ==========================================================================
 using System;
 using System.Collections.Generic;
 

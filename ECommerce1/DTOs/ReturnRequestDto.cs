@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: ReturnRequestDto.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module ReturnRequestDto
+// ==========================================================================
 using System;
 using System.Collections.Generic;
 

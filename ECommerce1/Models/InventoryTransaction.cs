@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: InventoryTransaction.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module InventoryTransaction
+// ==========================================================================
 using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;

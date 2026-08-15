@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: AdminWarrantyController.cs
+// MỤC ĐÍCH: API Controller phía Admin xử lý tiếp nhận, thẩm định thiết bị, cập nhật tình trạng kiểm tra (PASSED/REJECTED) và phê duyệt bảo hành.
+// ==========================================================================
 using ECommerce.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -26,13 +30,16 @@ namespace ECommerce1.Controllers
         // 3. Cập nhật InspectionStatus sang 'PASSED' (Đạt chuẩn) hoặc 'FAILED' (Không đạt chuẩn).
         // 4. Đặc biệt: Nếu KTV bấm Từ chối (FAILED), hệ thống tự động đổi trạng thái Đơn hàng cha sang 'Đã Hủy' (OrderStatusId = 5) để đóng hóa đơn và ngăn thanh toán.
         [HttpPut("order-items/{orderItemId}/inspect")]
+        // [Hàm thực thi nghiệp vụ]: `InspectOrderItem` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> InspectOrderItem(int orderItemId, [FromBody] UpdateInspectionRequest request)
         {
             if (request == null || string.IsNullOrEmpty(request.Status))
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest(new { message = "Trạng thái thẩm định không hợp lệ." });
 
             var statusUpper = request.Status.ToUpper();
             if (statusUpper != "PASSED" && statusUpper != "FAILED")
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest(new { message = "Trạng thái phải là 'PASSED' hoặc 'FAILED'." });
 
             var orderItem = await _context.OrderItems
@@ -41,11 +48,14 @@ namespace ECommerce1.Controllers
                 .FirstOrDefaultAsync(oi => oi.Id == orderItemId);
 
             if (orderItem == null)
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound(new { message = "Không tìm thấy chi tiết đơn hàng." });
 
             if (!orderItem.WarrantyId.HasValue || !orderItem.CustomerDeviceId.HasValue)
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest(new { message = "Sản phẩm này không đăng ký gói bảo hành cần thẩm định máy." });
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
@@ -70,9 +80,11 @@ namespace ECommerce1.Controllers
                     orderItem.Order.Note = "[THẨM ĐỊNH THÀNH CÔNG] " + (request.Note ?? "Thiết bị ngoại quan đạt chuẩn bảo hành.");
                 }
 
+                // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
 
+                // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                 return Ok(new
                 {
                     message = "Cập nhật trạng thái thẩm định thành công.",
@@ -84,12 +96,14 @@ namespace ECommerce1.Controllers
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest(new { message = "Lỗi trong quá trình cập nhật thẩm định: " + ex.Message });
             }
         }
 
         // ================= DANH SÁCH TẤT CẢ GÓI BẢO HÀNH (ADMIN) =================
         [HttpGet("packages")]
+        // [Hàm thực thi nghiệp vụ]: `GetAllPackages` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GetAllPackages()
         {
             var packages = await _context.Warranties
@@ -120,20 +134,26 @@ namespace ECommerce1.Controllers
                         .FirstOrDefault()
                 })
                 .ToListAsync();
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(packages);
         }
 
         // ================= THÊM GÓI BẢO HÀNH MỚI (ADMIN) =================
         [HttpPost("packages")]
+        // [Hàm thực thi nghiệp vụ]: `CreatePackage` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> CreatePackage([FromBody] CreateWarrantyRequest request)
         {
             if (request == null || string.IsNullOrEmpty(request.Code) || string.IsNullOrEmpty(request.Name))
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest(new { message = "Dữ liệu yêu cầu không hợp lệ." });
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var exists = await _context.Warranties.AnyAsync(w => w.Code == request.Code);
             if (exists)
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest(new { message = "Mã gói bảo hành này đã tồn tại." });
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
@@ -151,7 +171,9 @@ namespace ECommerce1.Controllers
                     UpdatedAt = DateTime.UtcNow
                 };
 
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 _context.Warranties.Add(warranty);
+                // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
 
                 // Tạo rule từ thông tin gửi lên
@@ -168,31 +190,40 @@ namespace ECommerce1.Controllers
                     MinPrice = request.Rules?.MinPrice ?? 0,
                     MaxPrice = request.Rules?.MaxPrice
                 };
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 _context.WarrantyPackageRules.Add(rule);
+                // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
 
                 await transaction.CommitAsync();
 
+                // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                 return Ok(warranty);
             }
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest(new { message = "Lỗi khi thêm gói bảo hành: " + ex.Message });
             }
         }
 
         // ================= CẬP NHẬT GÓI BẢO HÀNH (ADMIN) =================
         [HttpPut("packages/{id}")]
+        // [Hàm thực thi nghiệp vụ]: `UpdatePackage` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> UpdatePackage(int id, [FromBody] UpdateWarrantyRequest request)
         {
             if (request == null || string.IsNullOrEmpty(request.Name))
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest(new { message = "Dữ liệu yêu cầu không hợp lệ." });
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var warranty = await _context.Warranties.FindAsync(id);
             if (warranty == null)
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound(new { message = "Không tìm thấy gói bảo hành." });
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
@@ -213,6 +244,7 @@ namespace ECommerce1.Controllers
                 if (rule == null)
                 {
                     rule = new WarrantyPackageRule { WarrantyId = id };
+                    // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                     _context.WarrantyPackageRules.Add(rule);
                 }
                 rule.ProductId = request.Rules?.ProductId;
@@ -221,46 +253,60 @@ namespace ECommerce1.Controllers
                 rule.MinPrice = request.Rules?.MinPrice ?? 0;
                 rule.MaxPrice = request.Rules?.MaxPrice;
 
+                // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
+                // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                 return Ok(warranty);
             }
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest(new { message = "Lỗi khi cập nhật gói bảo hành: " + ex.Message });
             }
         }
 
         // ================= XÓA GÓI BẢO HÀNH (ADMIN) =================
         [HttpDelete("packages/{id}")]
+        // [Hàm thực thi nghiệp vụ]: `DeletePackage` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> DeletePackage(int id)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var warranty = await _context.Warranties.FindAsync(id);
             if (warranty == null)
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound(new { message = "Không tìm thấy gói bảo hành." });
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 var rules = await _context.WarrantyPackageRules.Where(r => r.WarrantyId == id).ToListAsync();
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 _context.WarrantyPackageRules.RemoveRange(rules);
 
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 _context.Warranties.Remove(warranty);
+                // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
 
                 await transaction.CommitAsync();
+                // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                 return Ok(new { message = "Xóa gói bảo hành thành công." });
             }
             catch (Exception ex)
             {
                 await transaction.RollbackAsync();
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest(new { message = "Lỗi khi xóa gói bảo hành: " + ex.Message });
             }
         }
 
         // ================= DANH SÁCH BẢO HÀNH & THIẾT BỊ KHÁCH HÀNG (DÙNG CHO ADMIN/KTV TIẾP CẬN SỬA CHỮA) =================
         [HttpGet("customer-warranties")]
+        // [Hàm thực thi nghiệp vụ]: `GetCustomerWarranties` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GetCustomerWarranties(
             [FromQuery] string? search = null,
             [FromQuery] string? imei = null,
@@ -346,15 +392,18 @@ namespace ECommerce1.Controllers
                 })
                 .ToListAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(result);
         }
 
         // ================= CẬP NHẬT MÃ IMEI VÀ GHI CHÚ TIẾP CẬN SỬA CHỮA (ADMIN) =================
         [HttpPut("update-device-imei")]
+        // [Hàm thực thi nghiệp vụ]: `UpdateDeviceImei` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> UpdateDeviceImei([FromBody] AdminUpdateImeiRequest request)
         {
             if (request == null || request.OrderItemId <= 0)
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest(new { message = "Thông tin không hợp lệ." });
             }
 
@@ -367,6 +416,7 @@ namespace ECommerce1.Controllers
 
             if (orderItem == null)
             {
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound(new { message = "Không tìm thấy thông tin gói bảo hành này." });
             }
 
@@ -392,7 +442,9 @@ namespace ECommerce1.Controllers
                         PurchaseDate = orderItem.Order.CreatedAt,
                         CreatedAt = DateTime.UtcNow
                     };
+                    // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                     _context.CustomerDevices.Add(device);
+                    // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                     await _context.SaveChangesAsync();
 
                     orderItem.CustomerDeviceId = device.Id;
@@ -409,8 +461,10 @@ namespace ECommerce1.Controllers
                 orderItem.InspectionStatus = request.InspectionStatus;
             }
 
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(new { message = "Cập nhật thông tin IMEI & Ghi chú tiếp cận sửa chữa thành công!" });
         }
     }

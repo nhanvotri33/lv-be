@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: ProductVariantResponse.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module ProductVariantResponse
+// ==========================================================================
 using System;
 
 namespace ECommerce1.DTOs.ProductVariant

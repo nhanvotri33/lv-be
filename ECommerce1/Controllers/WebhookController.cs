@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: WebhookController.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module WebhookController
+// ==========================================================================
 using ECommerce.Models;
 using ECommerce1.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -22,11 +26,14 @@ namespace ECommerce1.Controllers
             _orderService = orderService;
         }
 
+        // [API Endpoint POST [Route: `ahamove`]]: Tiếp nhận và xử lý yêu cầu từ Client
         [HttpPost("ahamove")]
+        // [Hàm thực thi nghiệp vụ]: `AhamoveWebhook` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> AhamoveWebhook([FromBody] AhamoveWebhookRequest request)
         {
             if (request == null || string.IsNullOrEmpty(request._id))
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Payload không hợp lệ.");
             }
 
@@ -74,6 +81,7 @@ namespace ECommerce1.Controllers
                 await _context.SaveChangesAsync();
             }
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(new { success = true });
         }
     }

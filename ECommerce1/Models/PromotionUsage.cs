@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: PromotionUsage.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module PromotionUsage
+// ==========================================================================
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;

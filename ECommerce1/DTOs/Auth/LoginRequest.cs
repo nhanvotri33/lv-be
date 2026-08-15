@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: LoginRequest.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module LoginRequest
+// ==========================================================================
 ﻿using System;
 
 namespace ECommerce1.DTOs.Auth

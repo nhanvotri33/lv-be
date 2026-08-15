@@ -1,9 +1,14 @@
+// ==========================================================================
+// MODULE: IProductService.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module IProductService
+// ==========================================================================
 using ECommerce1.DTOs.Product;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace ECommerce1.Services
 {
+    // [Hàm thực thi nghiệp vụ]: `Method` - Xử lý logic và luồng dữ liệu
     public interface IProductService
     {
         Task<IEnumerable<ProductResponse>> GetAllAsync(

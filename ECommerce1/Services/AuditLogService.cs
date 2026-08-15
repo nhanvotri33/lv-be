@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: AuditLogService.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module AuditLogService
+// ==========================================================================
 using ECommerce1.DTOs;
 using ECommerce.Models;
 using Microsoft.EntityFrameworkCore;
@@ -17,8 +21,10 @@ namespace ECommerce1.Services
             _context = context;
         }
 
+        // [Hàm thực thi nghiệp vụ]: `GetLogsAsync` - Xử lý logic và luồng dữ liệu
         public async Task<PaginatedResult<AuditLogResponseDto>> GetLogsAsync(AuditLogFilterDto filter)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var query = _context.AuditLogs.AsQueryable();
 
             // 1. Lọc theo từ khóa (Email hoặc UserId)
@@ -76,26 +82,31 @@ namespace ECommerce1.Services
             // Populate TargetName (Tên thực tế của bản ghi: Username/Email/Product Name...)
             var userGuids = logs.Where(l => l.TargetTable == "Users" && !string.IsNullOrEmpty(l.TargetId) && Guid.TryParse(l.TargetId, out _))
                                 .Select(l => Guid.Parse(l.TargetId!)).Distinct().ToList();
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var userMap = await _context.Users.Where(u => userGuids.Contains(u.Id))
                                 .ToDictionaryAsync(u => u.Id.ToString(), u => u.Username ?? u.Email);
 
             var productIds = logs.Where(l => l.TargetTable == "Products" && !string.IsNullOrEmpty(l.TargetId) && int.TryParse(l.TargetId, out _))
                                 .Select(l => int.Parse(l.TargetId!)).Distinct().ToList();
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var productMap = await _context.Products.Where(p => productIds.Contains(p.Id))
                                 .ToDictionaryAsync(p => p.Id.ToString(), p => p.Name);
 
             var warrantyIds = logs.Where(l => l.TargetTable == "Warranties" && !string.IsNullOrEmpty(l.TargetId) && int.TryParse(l.TargetId, out _))
                                 .Select(l => int.Parse(l.TargetId!)).Distinct().ToList();
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var warrantyMap = await _context.Warranties.Where(w => warrantyIds.Contains(w.Id))
                                 .ToDictionaryAsync(w => w.Id.ToString(), w => w.Name);
 
             var brandIds = logs.Where(l => l.TargetTable == "Brands" && !string.IsNullOrEmpty(l.TargetId) && int.TryParse(l.TargetId, out _))
                                 .Select(l => int.Parse(l.TargetId!)).Distinct().ToList();
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var brandMap = await _context.Brands.Where(b => brandIds.Contains(b.Id))
                                 .ToDictionaryAsync(b => b.Id.ToString(), b => b.Name);
 
             var catIds = logs.Where(l => l.TargetTable == "Categories" && !string.IsNullOrEmpty(l.TargetId) && int.TryParse(l.TargetId, out _))
                                 .Select(l => int.Parse(l.TargetId!)).Distinct().ToList();
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var catMap = await _context.Categories.Where(c => catIds.Contains(c.Id))
                                 .ToDictionaryAsync(c => c.Id.ToString(), c => c.Name);
 

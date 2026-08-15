@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: OrderEmailTemplateHelper.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module OrderEmailTemplateHelper
+// ==========================================================================
 using ECommerce.Models;
 using System;
 using System.Linq;

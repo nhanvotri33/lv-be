@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: ApplicationDbContext.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module ApplicationDbContext
+// ==========================================================================
 using ECommerce1.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
@@ -445,6 +449,7 @@ namespace ECommerce.Models
         public Dictionary<string, object?> OldValues { get; } = new();
         public Dictionary<string, object?> NewValues { get; } = new();
 
+        // [Hàm thực thi nghiệp vụ]: `GetTargetId` - Xử lý logic và luồng dữ liệu
         public string GetTargetId()
         {
             var keyValues = Entry.Properties.Where(p => p.Metadata.IsPrimaryKey()).Select(p => p.CurrentValue);

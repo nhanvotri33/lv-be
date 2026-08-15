@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: UploadController.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module UploadController
+// ==========================================================================
 using ECommerce1.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -21,15 +25,18 @@ namespace ECommerce1.Controllers
 
         // ================= UPLOAD LOCAL =================
         [HttpPost("local")]
+        // [Hàm thực thi nghiệp vụ]: `UploadLocal` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> UploadLocal(IFormFile file, [FromQuery] string folder = "general")
         {
             try
             {
                 var url = await _fileService.UploadImageAsync(file, folder);
+                // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                 return Ok(new { Url = url, Message = "Upload local thành công!" });
             }
             catch (Exception ex)
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest(ex.Message);
             }
         }

@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: CartController.cs
+// MỤC ĐÍCH: API Controller quản lý giỏ hàng người dùng (Thêm, Sửa, Xóa sản phẩm trong giỏ).
+// ==========================================================================
 using ECommerce.Models;
 using ECommerce1.DTOs.Cart;
 using Microsoft.AspNetCore.Authorization;
@@ -24,11 +28,13 @@ namespace ECommerce1.Controllers
 
         // Lấy giỏ hàng của user hiện tại
         [HttpGet]
+        // [Hàm thực thi nghiệp vụ]: `GetMyCart` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GetMyCart()
         {
             var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userIdString) || !Guid.TryParse(userIdString, out Guid userId))
             {
+                // [Phản hồi API]: Trả về kết quả Unauthorized cho phía Client
                 return Unauthorized("Không thể xác định người dùng.");
             }
 
@@ -50,7 +56,9 @@ namespace ECommerce1.Controllers
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
                 };
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 _context.Carts.Add(cart);
+                // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
             }
 
@@ -136,6 +144,7 @@ namespace ECommerce1.Controllers
 
             if (dbChanged)
             {
+                // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
             }
 
@@ -147,15 +156,18 @@ namespace ECommerce1.Controllers
                 Items = responseItems
             };
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(response);
         }
 
         // Làm sạch toàn bộ giỏ hàng
         [HttpDelete("clear")]
+        // [Hàm thực thi nghiệp vụ]: `ClearCart` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> ClearCart()
         {
             var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (!Guid.TryParse(userIdString, out Guid userId))
+                // [Phản hồi API]: Trả về kết quả Unauthorized cho phía Client
                 return Unauthorized();
 
             var cart = await _context.Carts
@@ -164,20 +176,25 @@ namespace ECommerce1.Controllers
 
             if (cart != null && cart.CartItems != null && cart.CartItems.Any())
             {
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 _context.CartItems.RemoveRange(cart.CartItems);
                 cart.UpdatedAt = DateTime.UtcNow;
+                // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
             }
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok("Đã làm sạch giỏ hàng.");
         }
 
         // Đồng bộ giỏ hàng hàng loạt (Batch Sync)
         [HttpPost("sync")]
+        // [Hàm thực thi nghiệp vụ]: `SyncCart` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> SyncCart([FromBody] System.Collections.Generic.List<SyncCartRequest> items)
         {
             var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (!Guid.TryParse(userIdString, out Guid userId))
+                // [Phản hồi API]: Trả về kết quả Unauthorized cho phía Client
                 return Unauthorized();
 
             var cart = await _context.Carts
@@ -192,13 +209,16 @@ namespace ECommerce1.Controllers
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
                 };
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 _context.Carts.Add(cart);
+                // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
             }
 
             // Xóa sạch các item cũ
             if (cart.CartItems != null && cart.CartItems.Any())
             {
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 _context.CartItems.RemoveRange(cart.CartItems);
             }
 
@@ -221,13 +241,16 @@ namespace ECommerce1.Controllers
                         IsAddon = item.IsAddon,
                         WarrantyId = item.WarrantyId
                     };
+                    // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                     _context.CartItems.Add(cartItem);
                 }
             }
 
             cart.UpdatedAt = DateTime.UtcNow;
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok("Đồng bộ giỏ hàng thành công.");
         }
     }

@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: ProductVariantRequest.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module ProductVariantRequest
+// ==========================================================================
 namespace ECommerce1.DTOs.ProductVariant
 {
     public class ProductVariantRequest

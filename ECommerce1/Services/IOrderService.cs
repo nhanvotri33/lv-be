@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: IOrderService.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module IOrderService
+// ==========================================================================
 using ECommerce1.DTOs.Order;
 using System;
 using System.Collections.Generic;
@@ -5,6 +9,7 @@ using System.Threading.Tasks;
 
 namespace ECommerce1.Services
 {
+    // [Hàm thực thi nghiệp vụ]: `Method` - Xử lý logic và luồng dữ liệu
     public interface IOrderService
     {
         Task<IEnumerable<OrderResponse>> GetMyOrdersAsync(Guid userId);

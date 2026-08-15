@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: UserResponse.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module UserResponse
+// ==========================================================================
 using System;
 
 namespace ECommerce1.DTOs.User
