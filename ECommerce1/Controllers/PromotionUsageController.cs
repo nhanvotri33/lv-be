@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: PromotionUsageController.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module PromotionUsageController
+// ==========================================================================
 using ECommerce.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -23,10 +27,12 @@ namespace ECommerce1.Controllers
 
         // Xem lịch sử sử dụng mã giảm giá của bản thân
         [HttpGet("my-usages")]
+        // [Hàm thực thi nghiệp vụ]: `GetMyUsages` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GetMyUsages()
         {
             var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (!Guid.TryParse(userIdString, out Guid userId))
+                // [Phản hồi API]: Trả về kết quả Unauthorized cho phía Client
                 return Unauthorized();
 
             var usages = await _context.PromotionUsages
@@ -41,6 +47,7 @@ namespace ECommerce1.Controllers
                 })
                 .ToListAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(usages);
         }
     }

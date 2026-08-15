@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: BlogController.cs
+// MỤC ĐÍCH: API Controller quản lý tin tức công nghệ, bài viết blog (Tạo, Sửa, Xuất bản bản nháp).
+// ==========================================================================
 using ECommerce.Models;
 using ECommerce1.DTOs.Blog;
 using Microsoft.AspNetCore.Authorization;
@@ -24,6 +28,7 @@ namespace ECommerce1.Controllers
 
         //// GET: api/Blog
         [HttpGet]
+        // [Hàm thực thi nghiệp vụ]: `GetAll` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GetAll(
             [FromQuery] string? search = null,
             [FromQuery] string? category = null,
@@ -32,6 +37,7 @@ namespace ECommerce1.Controllers
             [FromQuery] int pageNumber = 1,
             [FromQuery] int pageSize = 10)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var query = _context.Blogs.Include(b => b.User).AsQueryable();
 
             // Nếu người dùng không chỉ định isPublished, mặc định khách chỉ xem bài đã xuất bản
@@ -75,6 +81,7 @@ namespace ECommerce1.Controllers
                 .Select(b => BlogControllerHelpers.MapToResponse(b))
                 .ToListAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(new
             {
                 items,
@@ -87,37 +94,49 @@ namespace ECommerce1.Controllers
 
         // GET: api/Blog/{id} lấy data từ id
         [HttpGet("{id:int}")]
+        // [Hàm thực thi nghiệp vụ]: `GetById` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GetById(int id)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var blog = await _context.Blogs.Include(b => b.User).FirstOrDefaultAsync(b => b.Id == id);
+            // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
             if (blog == null) return NotFound(new { message = "Không tìm thấy bài viết." });
 
             // Tăng số lượt xem bài viết
             blog.ViewCount += 1;
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(BlogControllerHelpers.MapToResponse(blog));
         }
 
         // GET: api/Blog/slug/{slug} lấy data từ slug
         [HttpGet("slug/{slug}")]
+        // [Hàm thực thi nghiệp vụ]: `GetBySlug` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GetBySlug(string slug)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var blog = await _context.Blogs.Include(b => b.User).FirstOrDefaultAsync(b => b.Slug == slug);
+            // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
             if (blog == null) return NotFound(new { message = "Không tìm thấy bài viết." });
 
             // Tăng số lượt xem bài viết
             blog.ViewCount += 1;
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(BlogControllerHelpers.MapToResponse(blog));
         }
 
         // POST: api/Blog
         [HttpPost]
         [Authorize(Roles = "Admin")]
+        // [Hàm thực thi nghiệp vụ]: `Create` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> Create([FromBody] BlogRequest request)
         {
+            // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
             var slug = string.IsNullOrWhiteSpace(request.Slug) ? BlogControllerHelpers.GenerateSlug(request.Title) : request.Slug.Trim();
@@ -152,7 +171,9 @@ namespace ECommerce1.Controllers
                 UserId = userId
             };
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             _context.Blogs.Add(blog);
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
             return CreatedAtAction(nameof(GetBySlug), new { slug = blog.Slug }, BlogControllerHelpers.MapToResponse(blog));
@@ -161,14 +182,19 @@ namespace ECommerce1.Controllers
         // PUT: api/Blog/{id} cập nhật từ id
         [HttpPut("{id:int}")]
         [Authorize(Roles = "Admin")]
+        // [Hàm thực thi nghiệp vụ]: `Update` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> Update(int id, [FromBody] BlogRequest request)
         {
+            // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var blog = await _context.Blogs.Include(b => b.User).FirstOrDefaultAsync(b => b.Id == id);
+            // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
             if (blog == null) return NotFound(new { message = "Không tìm thấy bài viết." });
 
             var slug = string.IsNullOrWhiteSpace(request.Slug) ? BlogControllerHelpers.GenerateSlug(request.Title) : request.Slug.Trim();
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             if (await _context.Blogs.AnyAsync(b => b.Slug == slug && b.Id != id))
             {
                 slug = $"{slug}-{DateTime.UtcNow.Ticks % 10000}";
@@ -186,22 +212,29 @@ namespace ECommerce1.Controllers
             blog.IsFeatured = request.IsFeatured;
             blog.UpdatedAt = DateTime.UtcNow;
 
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(BlogControllerHelpers.MapToResponse(blog));
         }
 
         // PUT: api/Blog/{slug} thêm data từ slug
         [HttpPut("slug/{slug}")]
         [Authorize(Roles = "Admin")]
+        // [Hàm thực thi nghiệp vụ]: `UpdateBySlug` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> UpdateBySlug(string slug, [FromBody] BlogRequest request)
         {
+            // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var blog = await _context.Blogs.Include(b => b.User).FirstOrDefaultAsync(b => b.Slug == slug);
+            // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
             if (blog == null) return NotFound(new { message = "Không tìm thấy bài viết." });
 
             var newSlug = string.IsNullOrWhiteSpace(request.Slug) ? BlogControllerHelpers.GenerateSlug(request.Title) : request.Slug.Trim();
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             if (await _context.Blogs.AnyAsync(b => b.Slug == slug && b.Id != blog.Id))
             {
                 slug = $"{slug}-{DateTime.UtcNow.Ticks % 10000}";
@@ -219,22 +252,30 @@ namespace ECommerce1.Controllers
             blog.IsFeatured = request.IsFeatured;
             blog.UpdatedAt = DateTime.UtcNow;
 
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(BlogControllerHelpers.MapToResponse(blog));
         }
 
         // DELETE: api/Blog/{id}
         [HttpDelete("{id:int}")]
         [Authorize(Roles = "Admin")]
+        // [Hàm thực thi nghiệp vụ]: `Delete` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> Delete(int id)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var blog = await _context.Blogs.FindAsync(id);
+            // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
             if (blog == null) return NotFound(new { message = "Không tìm thấy bài viết." });
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             _context.Blogs.Remove(blog);
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(new { message = "Xóa bài viết thành công." });
         }
 
@@ -242,30 +283,40 @@ namespace ECommerce1.Controllers
         // PATCH: api/Blog/{id}/toggle-publish
         [HttpPatch("{id:int}/toggle-publish")]
         [Authorize(Roles = "Admin")]
+        // [Hàm thực thi nghiệp vụ]: `TogglePublish` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> TogglePublish(int id)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var blog = await _context.Blogs.FindAsync(id);
+            // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
             if (blog == null) return NotFound(new { message = "Không tìm thấy bài viết." });
 
             blog.IsPublished = !blog.IsPublished;
             blog.UpdatedAt = DateTime.UtcNow;
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(new { message = $"Đã {(blog.IsPublished ? "xuất bản" : "ẩn")} bài viết.", isPublished = blog.IsPublished });
         }
 
         // PATCH: api/Blog/{slug}/
         [HttpPatch("slug/{slug}/toggle-publish")]
         [Authorize(Roles = "Admin")]
+        // [Hàm thực thi nghiệp vụ]: `TogglePublish` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> TogglePublish(string slug)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var blog = await _context.Blogs.FirstOrDefaultAsync(b => b.Slug == slug);
+            // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
             if (blog == null) return NotFound(new { message = "Không tìm thấy bài viết." });
 
             blog.IsPublished = !blog.IsPublished;
             blog.UpdatedAt = DateTime.UtcNow;
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(new { message = $"Đã {(blog.IsPublished ? "xuất bản" : "ẩn")} bài viết.", isPublished = blog.IsPublished });
         }
     }

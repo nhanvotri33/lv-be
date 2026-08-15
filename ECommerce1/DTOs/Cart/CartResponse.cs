@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: CartResponse.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module CartResponse
+// ==========================================================================
 using System;
 using System.Collections.Generic;
 using System.Linq;

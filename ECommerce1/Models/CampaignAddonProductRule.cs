@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: CampaignAddonProductRule.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module CampaignAddonProductRule
+// ==========================================================================
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 

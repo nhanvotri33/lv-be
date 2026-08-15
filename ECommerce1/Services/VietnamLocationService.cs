@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: VietnamLocationService.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module VietnamLocationService
+// ==========================================================================
 using ECommerce.Models;
 using Microsoft.EntityFrameworkCore;
 using System;
@@ -211,6 +215,7 @@ namespace ECommerce1.Services
             if (newProvinces.Any())
             {
                 context.Provinces.AddRange(newProvinces);
+                // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await context.SaveChangesAsync();
             }
 
@@ -222,6 +227,7 @@ namespace ECommerce1.Services
                 {
                     var batch = newWards.Skip(i).Take(batchSize).ToList();
                     context.Wards.AddRange(batch);
+                    // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                     await context.SaveChangesAsync();
                 }
             }

@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: InventoryDetailDTO.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module InventoryDetailDTO
+// ==========================================================================
 using System;
 
 namespace ECommerce1.DTOs.InventoryTransaction

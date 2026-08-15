@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: Ward.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module Ward
+// ==========================================================================
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;

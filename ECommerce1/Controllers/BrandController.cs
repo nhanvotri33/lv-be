@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: BrandController.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module BrandController
+// ==========================================================================
 using ECommerce.Models;
 using ECommerce1.DTOs.Brand;
 using ECommerce1.Services;
@@ -25,8 +29,10 @@ namespace ECommerce1.Controllers
 
         // GET: api/Brand
         [HttpGet]
+        // [Hàm thực thi nghiệp vụ]: `GetAll` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GetAll([FromQuery] int? pageNumber = null, [FromQuery] int? pageSize = null, [FromQuery] string? searchTerm = null)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var query = _context.Brands.AsQueryable();
 
             if (!string.IsNullOrWhiteSpace(searchTerm))
@@ -60,6 +66,7 @@ namespace ECommerce1.Controllers
 
                 var totalPages = (int)Math.Ceiling((double)totalItems / size);
 
+                // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                 return Ok(new
                 {
                     items = brands,
@@ -87,23 +94,29 @@ namespace ECommerce1.Controllers
                     })
                     .ToListAsync();
 
+                // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                 return Ok(brands);
             }
         }
 
         // GET: api/Brand/5
         [HttpGet("{id}")]
+        // [Hàm thực thi nghiệp vụ]: `GetById` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GetById(int id)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var brand = await _context.Brands.FindAsync(id);
 
             if (brand == null)
             {
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound("Không tìm thấy thương hiệu.");
             }
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var productsCount = await _context.Products.CountAsync(p => p.BrandId == id);
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(new BrandResponse
             {
                 Id = brand.Id,
@@ -120,16 +133,22 @@ namespace ECommerce1.Controllers
 
         // GET: api/Brand/5/stats
         [HttpGet("{id}/stats")]
+        // [Hàm thực thi nghiệp vụ]: `GetStats` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GetStats(int id)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var brandExists = await _context.Brands.AnyAsync(b => b.Id == id);
             if (!brandExists)
             {
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound("Không tìm thấy thương hiệu.");
             }
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var totalActive = await _context.Products.CountAsync(p => p.BrandId == id && p.IsActive);
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var outOfStock = await _context.Products.CountAsync(p => p.BrandId == id && (p.TotalStock - p.ReservedStock) <= 0);
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var totalStock = await _context.Products.Where(p => p.BrandId == id).SumAsync(p => (int?)p.TotalStock) ?? 0;
 
             var topSellers = await _context.Products
@@ -149,6 +168,7 @@ namespace ECommerce1.Controllers
                 })
                 .ToListAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(new
             {
                 totalActive,
@@ -161,16 +181,20 @@ namespace ECommerce1.Controllers
         // POST: api/Brand
         [HttpPost]
         [Authorize(Roles = "Admin")]
+        // [Hàm thực thi nghiệp vụ]: `Create` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> Create([FromBody] BrandRequest request)
         {
             if (!ModelState.IsValid)
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest(ModelState);
             }
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var exists = await _context.Brands.AnyAsync(b => b.Slug == request.Slug);
             if (exists)
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Slug đã tồn tại. Vui lòng chọn Slug khác.");
             }
 
@@ -184,8 +208,10 @@ namespace ECommerce1.Controllers
             {
                 request.BrandCode = ECommerce1.Helpers.CodeGeneratorHelper.GenerateBrandOrCategoryCode(request.Name, 10);
             }
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             if (await _context.Brands.AnyAsync(b => b.BrandCode == request.BrandCode))
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Mã này đã tồn tại.");
             }
 
@@ -200,7 +226,9 @@ namespace ECommerce1.Controllers
                 CreatedAt = DateTime.UtcNow
             };
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             _context.Brands.Add(brand);
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
             return CreatedAtAction(nameof(GetById), new { id = brand.Id }, new BrandResponse
@@ -219,22 +247,28 @@ namespace ECommerce1.Controllers
         // PUT: api/Brand/5
         [HttpPut("{id}")]
         [Authorize(Roles = "Admin")]
+        // [Hàm thực thi nghiệp vụ]: `Update` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> Update(int id, [FromBody] BrandRequest request)
         {
             if (!ModelState.IsValid)
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest(ModelState);
             }
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var brand = await _context.Brands.FindAsync(id);
             if (brand == null)
             {
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound("Không tìm thấy thương hiệu.");
             }
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var exists = await _context.Brands.AnyAsync(b => b.Slug == request.Slug && b.Id != id);
             if (exists)
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Slug đã tồn tại. Vui lòng chọn Slug khác.");
             }
 
@@ -242,8 +276,10 @@ namespace ECommerce1.Controllers
             {
                 request.BrandCode = ECommerce1.Helpers.CodeGeneratorHelper.GenerateBrandOrCategoryCode(request.Name, 10);
             }
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             if (await _context.Brands.AnyAsync(b => b.BrandCode == request.BrandCode && b.Id != id))
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Mã này đã tồn tại.");
             }
 
@@ -259,14 +295,17 @@ namespace ECommerce1.Controllers
             brand.ImageUrl = request.ImageUrl;
             brand.IsActive = request.IsActive;
 
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(new { message = "Cập nhật thương hiệu thành công." });
         }
 
         // DELETE: api/Brand/5
         [HttpDelete("{id}")]
         [Authorize(Roles = "Admin")]
+        // [Hàm thực thi nghiệp vụ]: `Delete` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> Delete(int id)
         {
             var brand = await _context.Brands
@@ -275,11 +314,13 @@ namespace ECommerce1.Controllers
                 
             if (brand == null)
             {
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound("Không tìm thấy thương hiệu.");
             }
 
             if (brand.Products != null && brand.Products.Any())
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Không thể xóa thương hiệu đang có sản phẩm. Vui lòng xóa sản phẩm trước hoặc đổi thương hiệu cho sản phẩm.");
             }
 
@@ -288,9 +329,12 @@ namespace ECommerce1.Controllers
                 _fileService.DeleteImage(brand.ImageUrl);
             }
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             _context.Brands.Remove(brand);
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(new { message = "Xóa thương hiệu thành công." });
         }
     }

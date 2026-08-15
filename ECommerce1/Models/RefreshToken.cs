@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: RefreshToken.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module RefreshToken
+// ==========================================================================
 ﻿namespace ECommerce1.Models
 {
     public class RefreshToken

@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: ProductVariant.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module ProductVariant
+// ==========================================================================
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;

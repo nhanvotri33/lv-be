@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: CreateReviewRequest.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module CreateReviewRequest
+// ==========================================================================
 namespace ECommerce1.DTOs.Review
 {
     public class CreateReviewRequest

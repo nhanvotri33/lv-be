@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: UpdateProfileRequest.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module UpdateProfileRequest
+// ==========================================================================
 namespace ECommerce1.DTOs.User
 {
     public class UpdateProfileRequest

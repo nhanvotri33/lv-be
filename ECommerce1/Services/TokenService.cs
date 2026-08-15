@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: TokenService.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module TokenService
+// ==========================================================================
 ﻿using ECommerce1.Models;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
@@ -13,6 +17,7 @@ public class TokenService
         _config = config;
     }
 
+    // [Hàm thực thi nghiệp vụ]: `GenerateAccessToken` - Xử lý logic và luồng dữ liệu
     public string GenerateAccessToken(User user)
     {
         var claims = new[]
@@ -39,6 +44,7 @@ public class TokenService
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
+    // [Hàm thực thi nghiệp vụ]: `GenerateRefreshToken` - Xử lý logic và luồng dữ liệu
     public string GenerateRefreshToken()
     {
         return Convert.ToBase64String(Guid.NewGuid().ToByteArray());

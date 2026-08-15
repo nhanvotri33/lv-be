@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: CategoryResponse.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module CategoryResponse
+// ==========================================================================
 using System;
 
 namespace ECommerce1.DTOs.Category

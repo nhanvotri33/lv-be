@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: PromotionCampaign.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module PromotionCampaign
+// ==========================================================================
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;

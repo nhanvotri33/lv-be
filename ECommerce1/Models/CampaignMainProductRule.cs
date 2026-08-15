@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: CampaignMainProductRule.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module CampaignMainProductRule
+// ==========================================================================
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 

@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: ShippingInfoRequest.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module ShippingInfoRequest
+// ==========================================================================
 namespace ECommerce1.DTOs.ShippingInfo
 {
     public class ShippingInfoRequest

@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: BannerDto.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module BannerDto
+// ==========================================================================
 namespace ECommerce1.DTOs.Banner
 {
     public class BannerDto

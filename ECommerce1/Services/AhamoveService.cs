@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: AhamoveService.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module AhamoveService
+// ==========================================================================
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
@@ -23,6 +27,7 @@ namespace ECommerce1.Services
             _configuration = configuration;
         }
 
+        // [Hàm thực thi nghiệp vụ]: `GetTokenAsync` - Xử lý logic và luồng dữ liệu
         public async Task<string> GetTokenAsync()
         {
             if (_memoryCache.TryGetValue(CacheTokenKey, out string cachedToken))
@@ -62,6 +67,7 @@ namespace ECommerce1.Services
             throw new InvalidOperationException($"Không tìm thấy trường 'token' trong phản hồi của Ahamove: {content}");
         }
 
+        // [Hàm thực thi nghiệp vụ]: `EstimateFeeAsync` - Xử lý logic và luồng dữ liệu
         public async Task<decimal> EstimateFeeAsync(double destLat, double destLng, string destAddress, string serviceId = "SGN-BIKE")
         {
             try
@@ -175,6 +181,7 @@ namespace ECommerce1.Services
             return Math.Round(calculatedFee / 1000m) * 1000m;
         }
 
+        // [Hàm thực thi nghiệp vụ]: `CreateOrderAsync` - Xử lý logic và luồng dữ liệu
         public async Task<AhamoveOrderResponse> CreateOrderAsync(Order order, string serviceId = "SGN-BIKE")
         {
             try

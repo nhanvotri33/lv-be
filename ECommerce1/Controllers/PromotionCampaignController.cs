@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: PromotionCampaignController.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module PromotionCampaignController
+// ==========================================================================
 using ECommerce.Models;
 using ECommerce1.DTOs.PromotionCampaign;
 using Microsoft.AspNetCore.Authorization;
@@ -23,8 +27,10 @@ namespace ECommerce1.Controllers
 
         // ================= ADMIN APIs =================
 
+        // [API Endpoint GET]: Tiếp nhận và xử lý yêu cầu từ Client
         [HttpGet]
         [Authorize(Roles = "Admin")]
+        // [Hàm thực thi nghiệp vụ]: `GetAllCampaigns` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GetAllCampaigns()
         {
             var campaigns = await _context.PromotionCampaigns
@@ -45,11 +51,14 @@ namespace ECommerce1.Controllers
                 .ToListAsync();
 
             var response = campaigns.Select(MapToResponse).ToList();
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(response);
         }
 
+        // [API Endpoint GET [Route: `{id}`]]: Tiếp nhận và xử lý yêu cầu từ Client
         [HttpGet("{id}")]
         [Authorize(Roles = "Admin")]
+        // [Hàm thực thi nghiệp vụ]: `GetCampaign` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GetCampaign(int id)
         {
             var campaign = await _context.PromotionCampaigns
@@ -69,16 +78,21 @@ namespace ECommerce1.Controllers
                 .FirstOrDefaultAsync(c => c.Id == id);
 
             if (campaign == null)
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound("Không tìm thấy chiến dịch.");
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(MapToResponse(campaign));
         }
 
+        // [API Endpoint POST]: Tiếp nhận và xử lý yêu cầu từ Client
         [HttpPost]
         [Authorize(Roles = "Admin")]
+        // [Hàm thực thi nghiệp vụ]: `CreateCampaign` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> CreateCampaign([FromBody] PromotionCampaignRequest request)
         {
             if (!ModelState.IsValid)
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest(ModelState);
 
             var campaign = new PromotionCampaign
@@ -116,14 +130,19 @@ namespace ECommerce1.Controllers
                 }).ToList();
             }
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             _context.PromotionCampaigns.Add(campaign);
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(new { Message = "Tạo chiến dịch thành công.", Id = campaign.Id });
         }
 
+        // [API Endpoint PUT [Route: `{id}`]]: Tiếp nhận và xử lý yêu cầu từ Client
         [HttpPut("{id}")]
         [Authorize(Roles = "Admin")]
+        // [Hàm thực thi nghiệp vụ]: `UpdateCampaign` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> UpdateCampaign(int id, [FromBody] PromotionCampaignRequest request)
         {
             var campaign = await _context.PromotionCampaigns
@@ -132,6 +151,7 @@ namespace ECommerce1.Controllers
                 .FirstOrDefaultAsync(c => c.Id == id);
 
             if (campaign == null)
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound("Không tìm thấy chiến dịch.");
 
             campaign.Name = request.Name;
@@ -145,7 +165,7 @@ namespace ECommerce1.Controllers
             campaign.MaxDiscountAmount = request.MaxDiscountAmount;
             campaign.UpdatedAt = DateTime.UtcNow;
 
-            // Update rules
+            // Cập nhật rules
             _context.CampaignMainProductRules.RemoveRange(campaign.MainProductRules);
             if (request.MainProductRules != null)
             {
@@ -157,6 +177,7 @@ namespace ECommerce1.Controllers
                 }).ToList();
             }
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             _context.CampaignAddonProductRules.RemoveRange(campaign.AddonProductRules);
             if (request.AddonProductRules != null)
             {
@@ -168,34 +189,46 @@ namespace ECommerce1.Controllers
                 }).ToList();
             }
 
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok("Cập nhật chiến dịch thành công.");
         }
 
+        // [API Endpoint DELETE [Route: `{id}`]]: Tiếp nhận và xử lý yêu cầu từ Client
         [HttpDelete("{id}")]
         [Authorize(Roles = "Admin")]
+        // [Hàm thực thi nghiệp vụ]: `DeleteCampaign` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> DeleteCampaign(int id)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var campaign = await _context.PromotionCampaigns.FindAsync(id);
             if (campaign == null)
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound("Không tìm thấy chiến dịch.");
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             _context.PromotionCampaigns.Remove(campaign);
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok("Xóa chiến dịch thành công.");
         }
 
         // ================= CLIENT APIs =================
 
+        // [API Endpoint GET [Route: `product/{productId}`]]: Tiếp nhận và xử lý yêu cầu từ Client
         [HttpGet("product/{productId}")]
         [AllowAnonymous]
+        // [Hàm thực thi nghiệp vụ]: `GetCampaignsForProduct` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GetCampaignsForProduct(int productId)
         {
             // 1. Get product info
             var product = await _context.Products.FindAsync(productId);
             if (product == null)
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound("Sản phẩm không tồn tại.");
 
             // 2. Lọc các chiến dịch còn hiệu lực và IsActive
@@ -255,6 +288,7 @@ namespace ECommerce1.Controllers
 
                     foreach (var rule in campaign.AddonProductRules)
                     {
+                        // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                         var ruleQuery = _context.Products.Where(p => p.IsActive);
                         bool hasCriteria = false;
 
@@ -331,6 +365,7 @@ namespace ECommerce1.Controllers
                 }
             }
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(applicableCampaigns);
         }
 
@@ -369,11 +404,13 @@ namespace ECommerce1.Controllers
         private async Task<HashSet<int>> GetAncestorCategoryIds(int categoryId)
         {
             var result = new HashSet<int> { categoryId };
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var current = await _context.Categories.FindAsync(categoryId);
 
             while (current?.ParentId != null)
             {
                 result.Add(current.ParentId.Value);
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 current = await _context.Categories.FindAsync(current.ParentId.Value);
             }
 

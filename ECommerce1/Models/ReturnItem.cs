@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: ReturnItem.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module ReturnItem
+// ==========================================================================
 using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;

@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: Promotion.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module Promotion
+// ==========================================================================
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;

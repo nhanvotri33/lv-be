@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: CategoryBrandDefault.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module CategoryBrandDefault
+// ==========================================================================
 using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;

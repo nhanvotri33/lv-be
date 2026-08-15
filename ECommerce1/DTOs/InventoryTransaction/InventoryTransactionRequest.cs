@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: InventoryTransactionRequest.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module InventoryTransactionRequest
+// ==========================================================================
 using System;
 
 namespace ECommerce1.DTOs.InventoryTransaction

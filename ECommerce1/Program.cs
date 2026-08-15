@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: Program.cs
+// MỤC ĐÍCH: File khởi chạy chính của ứng dụng ASP.NET Core API: Đăng ký Dependency Injection, Cấu hình JWT Auth, CORS, Swagger và Middleware Pipeline.
+// ==========================================================================
 using ECommerce.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;

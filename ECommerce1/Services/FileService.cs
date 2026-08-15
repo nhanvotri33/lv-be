@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: FileService.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module FileService
+// ==========================================================================
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
@@ -10,6 +14,7 @@ using System.Threading.Tasks;
 
 namespace ECommerce1.Services
 {
+    // [Hàm thực thi nghiệp vụ]: `Method` - Xử lý logic và luồng dữ liệu
     public interface IFileService
     {
         Task<string> UploadImageAsync(IFormFile file, string subFolder = "general");
@@ -27,6 +32,7 @@ namespace ECommerce1.Services
             _config = config;
         }
 
+        // [Hàm thực thi nghiệp vụ]: `UploadImageAsync` - Xử lý logic và luồng dữ liệu
         public async Task<string> UploadImageAsync(IFormFile file, string subFolder = "general")
         {
             if (file == null || file.Length == 0)
@@ -143,6 +149,7 @@ namespace ECommerce1.Services
             return str;
         }
 
+        // [Hàm thực thi nghiệp vụ]: `DeleteImage` - Xử lý logic và luồng dữ liệu
         public void DeleteImage(string relativePath)
         {
             if (string.IsNullOrEmpty(relativePath)) return;

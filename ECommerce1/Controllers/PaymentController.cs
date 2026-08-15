@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: PaymentController.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module PaymentController
+// ==========================================================================
 using ECommerce.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -30,10 +34,13 @@ namespace ECommerce1.Controllers
             _configuration = configuration;
         }
 
+        // [API Endpoint POST [Route: `create-checkout-session/{orderId}`]]: Tiếp nhận và xử lý yêu cầu từ Client
         [HttpPost("create-checkout-session/{orderId}")]
+        // [Hàm thực thi nghiệp vụ]: `CreateCheckoutSession` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> CreateCheckoutSession(int orderId, [FromQuery] string provider = "stripe")
         {
             var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            // [Phản hồi API]: Trả về kết quả Unauthorized cho phía Client
             if (!Guid.TryParse(userIdString, out Guid userId)) return Unauthorized();
 
             var order = await _context.Orders
@@ -42,7 +49,9 @@ namespace ECommerce1.Controllers
                 .ThenInclude(pv => pv.Product)
                 .FirstOrDefaultAsync(o => o.Id == orderId && o.UserId == userId);
 
+            // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
             if (order == null) return NotFound("Không tìm thấy đơn hàng");
+            // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
             if (order.OrderStatusId != 1) return BadRequest("Đơn hàng này không ở trạng thái chờ thanh toán.");
 
             // Hỗ trợ lưu log giao dịch COD trong Nhật ký giao dịch thanh toá 
@@ -76,6 +85,7 @@ namespace ECommerce1.Controllers
             //}
 
             var paymentProvider = _paymentProviders.FirstOrDefault(p => p.ProviderName.Equals(provider, StringComparison.OrdinalIgnoreCase));
+            // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
             if (paymentProvider == null) return BadRequest($"Phương thức thanh toán '{provider}' không được hỗ trợ.");
 
             var domain = _configuration["Frontend:BaseUrl"] ?? "http://localhost:5173";
@@ -112,7 +122,9 @@ namespace ECommerce1.Controllers
                     UpdatedAt = DateTime.UtcNow
                 };
 
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 _context.Payments.Add(payment);
+                // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
 
                 // Trả về URL thanh toán tương ứng cho từng cổng thanh toán
@@ -121,27 +133,34 @@ namespace ECommerce1.Controllers
                     if (sessionId.StartsWith("mock_stripe_session_"))
                     {
                         var mockRedirectUrl = successUrl.Replace("{CHECKOUT_SESSION_ID}", sessionId);
+                        // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                         return Ok(new { url = mockRedirectUrl });
                     }
                     var service = new Stripe.Checkout.SessionService();
                     var sessionInfo = await service.GetAsync(sessionId);
+                    // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                     return Ok(new { url = sessionInfo.Url });
                 }
                 else if (provider.Equals("vnpay", StringComparison.OrdinalIgnoreCase))
                 {
+                    // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                     return Ok(new { url = checkoutSession });
                 }
 
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Phương thức thanh toán không hợp lệ.");
             }
             catch (Exception ex)
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest(new { message = ex.Message });
             }
         }
 
+        // [API Endpoint GET [Route: `verify-session`]]: Tiếp nhận và xử lý yêu cầu từ Client
         [HttpGet("verify-session")]
         [AllowAnonymous]
+        // [Hàm thực thi nghiệp vụ]: `VerifySession` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> VerifySession([FromQuery] string? session_id, [FromQuery] string provider = "stripe")
         {
             try
@@ -149,12 +168,16 @@ namespace ECommerce1.Controllers
                 if (provider.Equals("vnpay", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(session_id))
                     session_id = Request.Query["vnp_TxnRef"].ToString();
 
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 if (string.IsNullOrWhiteSpace(session_id)) return BadRequest("Không tìm thấy mã phiên giao dịch.");
 
                 var paymentProvider = _paymentProviders.FirstOrDefault(p => p.ProviderName.Equals(provider, StringComparison.OrdinalIgnoreCase));
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 if (paymentProvider == null) return BadRequest($"Phương thức thanh toán '{provider}' không được hỗ trợ.");
 
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 var payment = await _context.Payments.FirstOrDefaultAsync(p => p.ProviderSessionId == session_id && p.Provider == provider);
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 if (payment == null) return NotFound("Không tìm thấy giao dịch.");
 
                 var result = await paymentProvider.VerifySessionAsync(session_id);
@@ -165,53 +188,68 @@ namespace ECommerce1.Controllers
                     payment.ProviderTransactionId = result.TransactionId ?? "";
                     payment.UpdatedAt = DateTime.UtcNow;
 
+                    // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                     var order = await _context.Orders.FindAsync(payment.OrderId);
                     if (order != null && order.OrderStatusId == 1)
                     {
                         order.OrderStatusId = 2; // Processing
                     }
 
+                    // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                     await _context.SaveChangesAsync();
+                    // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                     return Ok(new { message = result.Message, orderId = order?.Id });
                 }
 
                 payment.Status = "failed";
                 payment.UpdatedAt = DateTime.UtcNow;
+                // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
 
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest(new { message = result.Message });
             }
             catch (Exception ex)
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest(new { message = ex.Message });
             }
         }
 
+        // [API Endpoint POST [Route: `cancel-session`]]: Tiếp nhận và xử lý yêu cầu từ Client
         [HttpPost("cancel-session")]
+        // [Hàm thực thi nghiệp vụ]: `CancelSession` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> CancelSession([FromQuery] string session_id, [FromQuery] string provider = "stripe")
         {
             try
             {
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 var payment = await _context.Payments.FirstOrDefaultAsync(p => p.ProviderSessionId == session_id && p.Provider == provider);
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 if (payment == null) return NotFound("Không tìm thấy giao dịch.");
 
                 if (payment.Status == "pending")
                 {
                     payment.Status = "failed";
                     payment.UpdatedAt = DateTime.UtcNow;
+                    // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                     await _context.SaveChangesAsync();
                 }
 
+                // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                 return Ok(new { message = "Giao dịch đã được hủy." });
             }
             catch (Exception ex)
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest(new { message = ex.Message });
             }
         }
 
+        // [API Endpoint GET [Route: `admin/all-payments`]]: Tiếp nhận và xử lý yêu cầu từ Client
         [HttpGet("admin/all-payments")]
         [Authorize(Roles = "Admin")]
+        // [Hàm thực thi nghiệp vụ]: `GetAllPayments` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GetAllPayments()
         {
             try
@@ -236,10 +274,12 @@ namespace ECommerce1.Controllers
                     })
                     .ToListAsync();
 
+                // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                 return Ok(payments);
             }
             catch (Exception ex)
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest(new { message = ex.Message });
             }
         }
@@ -247,13 +287,17 @@ namespace ECommerce1.Controllers
         // ================= MOMO WEBHOOK IPN ENDPOINT =================
         [HttpPost("momo-webhook")]
         [AllowAnonymous]
+        // [Hàm thực thi nghiệp vụ]: `MomoWebhook` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> MomoWebhook()
         {
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok();
         }
 
+        // [API Endpoint GET [Route: `vnpay-ipn`]]: Tiếp nhận và xử lý yêu cầu từ Client
         [HttpGet("vnpay-ipn")]
         [AllowAnonymous]
+        // [Hàm thực thi nghiệp vụ]: `VnPayIpn` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> VnPayIpn()
         {
             try
@@ -264,23 +308,29 @@ namespace ECommerce1.Controllers
 
                 if (vnpayProvider == null || string.IsNullOrWhiteSpace(txnRef))
                 {
+                    // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                     return Ok(new { RspCode = "01", Message = "Order not found" });
                 }
 
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 var payment = await _context.Payments.FirstOrDefaultAsync(p => p.ProviderSessionId == txnRef && p.Provider == "vnpay");
                 if (payment == null)
                 {
+                    // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                     return Ok(new { RspCode = "01", Message = "Order not found" });
                 }
 
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 var order = await _context.Orders.FindAsync(payment.OrderId);
                 if (order == null)
                 {
+                    // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                     return Ok(new { RspCode = "01", Message = "Order not found" });
                 }
 
                 if (order.OrderStatusId != 1)
                 {
+                    // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                     return Ok(new { RspCode = "02", Message = "Order already confirmed" });
                 }
 
@@ -289,6 +339,7 @@ namespace ECommerce1.Controllers
                     long expectedAmount = (long)Math.Round(order.TotalPrice * 100, 0);
                     if (vnpAmount != expectedAmount)
                     {
+                        // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                         return Ok(new { RspCode = "04", Message = "Invalid amount" });
                     }
                 }
@@ -296,6 +347,7 @@ namespace ECommerce1.Controllers
                 var verificationResult = await vnpayProvider.VerifySessionAsync(txnRef);
                 if (!verificationResult.IsSuccess && verificationResult.Message == "Chữ ký VNPAY không hợp lệ.")
                 {
+                    // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                     return Ok(new { RspCode = "97", Message = "Invalid Checksum" });
                 }
 
@@ -305,19 +357,23 @@ namespace ECommerce1.Controllers
                     payment.ProviderTransactionId = verificationResult.TransactionId ?? "";
                     payment.UpdatedAt = DateTime.UtcNow;
                     order.OrderStatusId = 2; // Processing (Đã thanh toán)
+                    // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                     await _context.SaveChangesAsync();
                 }
                 else
                 {
                     payment.Status = "failed";
                     payment.UpdatedAt = DateTime.UtcNow;
+                    // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                     await _context.SaveChangesAsync();
                 }
 
+                // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                 return Ok(new { RspCode = "00", Message = "Confirm Success" });
             }
             catch
             {
+                // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                 return Ok(new { RspCode = "99", Message = "Unknown error" });
             }
         }

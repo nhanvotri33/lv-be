@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: AiOptions.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module AiOptions
+// ==========================================================================
 namespace ECommerce1.Services.Ai
 {
     public class AiOptions

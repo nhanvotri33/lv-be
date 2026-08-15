@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: LoginResponse.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module LoginResponse
+// ==========================================================================
 namespace ECommerce1.DTOs.Auth
 {
     public class LoginResponse

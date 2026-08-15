@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: Province.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module Province
+// ==========================================================================
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 

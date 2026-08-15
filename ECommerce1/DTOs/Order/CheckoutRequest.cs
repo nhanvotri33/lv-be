@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: CheckoutRequest.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module CheckoutRequest
+// ==========================================================================
 namespace ECommerce1.DTOs.Order
 {
     public class CheckoutRequest

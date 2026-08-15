@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: ShippingInfoResponse.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module ShippingInfoResponse
+// ==========================================================================
 using System;
 
 namespace ECommerce1.DTOs.ShippingInfo

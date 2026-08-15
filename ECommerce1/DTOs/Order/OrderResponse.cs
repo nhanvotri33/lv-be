@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: OrderResponse.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module OrderResponse
+// ==========================================================================
 using System;
 using System.Collections.Generic;
 

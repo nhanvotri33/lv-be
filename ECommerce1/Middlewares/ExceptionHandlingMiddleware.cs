@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: ExceptionHandlingMiddleware.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module ExceptionHandlingMiddleware
+// ==========================================================================
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;

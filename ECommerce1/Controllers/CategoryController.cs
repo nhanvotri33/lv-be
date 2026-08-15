@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: CategoryController.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module CategoryController
+// ==========================================================================
 using ECommerce.Models;
 using ECommerce1.DTOs.Category;
 using ECommerce1.Services;
@@ -25,6 +29,7 @@ namespace ECommerce1.Controllers
 
         private async Task<HashSet<int>> GetValidCategoryIdsAsync()
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var allCats = await _context.Categories.ToListAsync();
             var validIds = new HashSet<int>();
             
@@ -51,6 +56,7 @@ namespace ECommerce1.Controllers
 
         // ================= READ: Ai cũng xem được (Hoặc User) =================
         [HttpGet]
+        // [Hàm thực thi nghiệp vụ]: `GetAll` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GetAll([FromQuery] bool? isRoot = null, [FromQuery] bool includeInactive = false)
         {
             var query = _context.Categories
@@ -89,10 +95,13 @@ namespace ECommerce1.Controllers
                 })
                 .ToListAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(categories);
         }
 
+        // [API Endpoint GET [Route: `{id}`]]: Tiếp nhận và xử lý yêu cầu từ Client
         [HttpGet("{id}")]
+        // [Hàm thực thi nghiệp vụ]: `GetById` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GetById(int id, [FromQuery] bool includeInactive = false)
         {
             var category = await _context.Categories
@@ -102,6 +111,7 @@ namespace ECommerce1.Controllers
                 .FirstOrDefaultAsync(c => c.Id == id);
 
             if (category == null)
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound("Không tìm thấy danh mục.");
 
             if (!includeInactive)
@@ -109,10 +119,12 @@ namespace ECommerce1.Controllers
                 var validCategoryIds = await GetValidCategoryIdsAsync();
                 if (!validCategoryIds.Contains(id))
                 {
+                    // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                     return NotFound("Danh mục này không tồn tại hoặc đã bị ẩn.");
                 }
             }
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(new CategoryResponse
             {
                 Id = category.Id,
@@ -134,6 +146,7 @@ namespace ECommerce1.Controllers
 
         // GET: api/Category/5/details
         [HttpGet("{id}/details")]
+        // [Hàm thực thi nghiệp vụ]: `GetCategoryDetails` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GetCategoryDetails(int id, [FromQuery] bool includeInactive = false)
         {
             var category = await _context.Categories
@@ -144,6 +157,7 @@ namespace ECommerce1.Controllers
                 .FirstOrDefaultAsync(c => c.Id == id);
 
             if (category == null)
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound("Không tìm thấy danh mục.");
 
             if (!includeInactive)
@@ -151,6 +165,7 @@ namespace ECommerce1.Controllers
                 var validCategoryIds = await GetValidCategoryIdsAsync();
                 if (!validCategoryIds.Contains(id))
                 {
+                    // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                     return NotFound("Danh mục này không tồn tại hoặc đã bị ẩn.");
                 }
 
@@ -174,6 +189,7 @@ namespace ECommerce1.Controllers
                         SpecsTemplate = c.SpecsTemplate
                     }).ToList();
 
+                // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                 return Ok(new
                 {
                     SubCategories = subCategories
@@ -199,6 +215,7 @@ namespace ECommerce1.Controllers
                     SpecsTemplate = c.SpecsTemplate
                 }).ToList();
 
+                // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                 return Ok(new
                 {
                     SubCategories = subCategories
@@ -209,6 +226,7 @@ namespace ECommerce1.Controllers
         // ================= CREATE: Chỉ Admin =================
         [HttpPost]
         [Authorize(Roles = "Admin")]
+        // [Hàm thực thi nghiệp vụ]: `Create` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> Create([FromBody] CategoryRequest request)
         {
             // =========================================================================
@@ -239,8 +257,10 @@ namespace ECommerce1.Controllers
             // request.CategoryCode = string.IsNullOrWhiteSpace(rawCode) ? $"DT-{ECommerce1.Helpers.CodeGeneratorHelper.GenerateBrandOrCategoryCode(request.Name, 20)}" : rawCode; // viết tắt
             // request.CategoryCode = string.IsNullOrWhiteSpace(rawCode) ? $"DT-{ECommerce1.Helpers.CodeGeneratorHelper.GenerateSlug(request.Name).Replace("-", "").ToUpper()}" : rawCode; // đầy đủ
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             if (await _context.Categories.AnyAsync(c => c.CategoryCode == request.CategoryCode))
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Mã này đã tồn tại.");
             }
 
@@ -266,24 +286,31 @@ namespace ECommerce1.Controllers
                 UpdatedAt = DateTime.UtcNow
             };
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             _context.Categories.Add(newCategory);
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok("Tạo danh mục thành công.");
         }
 
         // ================= UPDATE: Chỉ Admin =================
         [HttpPut("{id}")]
         [Authorize(Roles = "Admin")]
+        // [Hàm thực thi nghiệp vụ]: `Update` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> Update(int id, [FromBody] CategoryRequest request)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var category = await _context.Categories.FindAsync(id);
             if (category == null)
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound("Không tìm thấy danh mục.");
 
             // 1. Luồng 1: Chặn "Tự nhận mình làm cha"
             if (request.ParentId.HasValue && request.ParentId.Value == id)
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Không thể chọn chính danh mục này làm danh mục cha.");
             }
 
@@ -295,6 +322,7 @@ namespace ECommerce1.Controllers
                 {
                     if (currentAncestorId.Value == id)
                     {
+                        // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                         return BadRequest("Lỗi vòng lặp gia phả: Không thể chọn danh mục con/cháu của chính nó làm danh mục cha.");
                     }
                     var parentOfAncestor = await _context.Categories
@@ -314,6 +342,7 @@ namespace ECommerce1.Controllers
                     .FirstOrDefaultAsync(c => c.Id == request.ParentId.Value);
                 if (parentCat == null)
                 {
+                    // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                     return BadRequest("Không tìm thấy danh mục cha mới.");
                 }
                 newParentLevel = parentCat.ParentId == null ? 1 : (parentCat.ParentCategory.ParentId == null ? 2 : 3);
@@ -339,6 +368,7 @@ namespace ECommerce1.Controllers
 
             if (newParentLevel + subTreeDepth > 3)
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest($"Không thể thay đổi danh mục cha vì tổng số cấp phân cấp sẽ vượt quá giới hạn (tối đa 3 cấp). Danh mục hiện tại cùng các con cháu có độ sâu {subTreeDepth} cấp và danh mục cha mới ở cấp {newParentLevel}.");
             }
 
@@ -346,8 +376,10 @@ namespace ECommerce1.Controllers
             {
                 request.CategoryCode = ECommerce1.Helpers.CodeGeneratorHelper.GenerateBrandOrCategoryCode(request.Name, 20);
             }
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             if (await _context.Categories.AnyAsync(c => c.CategoryCode == request.CategoryCode && c.Id != id))
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Mã này đã tồn tại.");
             }
 
@@ -377,14 +409,17 @@ namespace ECommerce1.Controllers
             category.SpecsTemplate = request.SpecsTemplate;
             category.UpdatedAt = DateTime.UtcNow;
 
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok("Cập nhật danh mục thành công.");
         }
 
         // ================= DELETE: Chỉ Admin =================
         [HttpDelete("{id}")]
         [Authorize(Roles = "Admin")]
+        // [Hàm thực thi nghiệp vụ]: `Delete` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> Delete(int id)
         {
             var category = await _context.Categories
@@ -392,12 +427,16 @@ namespace ECommerce1.Controllers
                 .FirstOrDefaultAsync(c => c.Id == id);
 
             if (category == null)
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound("Không tìm thấy danh mục.");
 
             if (category.Products != null && category.Products.Any())
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Không thể xóa vì danh mục này đang chứa sản phẩm.");
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             if (await _context.Categories.AnyAsync(c => c.ParentId == id))
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Không thể xóa vì danh mục này có chứa danh mục con.");
 
             if (!string.IsNullOrEmpty(category.IconUrl))
@@ -405,9 +444,12 @@ namespace ECommerce1.Controllers
                 _fileService.DeleteImage(category.IconUrl);
             }
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             _context.Categories.Remove(category);
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok("Xóa danh mục thành công.");
         }
     }

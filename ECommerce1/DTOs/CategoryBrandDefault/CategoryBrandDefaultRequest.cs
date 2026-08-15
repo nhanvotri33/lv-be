@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: CategoryBrandDefaultRequest.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module CategoryBrandDefaultRequest
+// ==========================================================================
 using System.ComponentModel.DataAnnotations;
 
 namespace ECommerce1.DTOs.CategoryBrandDefault

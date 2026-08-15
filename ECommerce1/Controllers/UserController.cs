@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: UserController.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module UserController
+// ==========================================================================
 using ECommerce.Models;
 using ECommerce1.Models;
 using ECommerce1.DTOs.User;
@@ -25,18 +29,22 @@ namespace ECommerce1.Controllers
 
         // ================= LẤY THÔNG TIN CÁ NHÂN CỦA MÌNH =================
         [HttpGet("me")]
+        // [Hàm thực thi nghiệp vụ]: `GetMyProfile` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GetMyProfile()
         {
             var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (!Guid.TryParse(userIdString, out Guid userId))
+                // [Phản hồi API]: Trả về kết quả Unauthorized cho phía Client
                 return Unauthorized();
 
             // 1. DATABASE LÀM VIỆC: Chỉ truy vấn thông tin cơ bản và 2 luồng điểm thô của User
             var user = await _context.Users.FindAsync(userId);
             if (user == null)
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound("Không tìm thấy người dùng.");
 
             if (!user.IsActive)
+                // [Phản hồi API]: Trả về kết quả Unauthorized cho phía Client
                 return Unauthorized("Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.");
 
             // 2. BACKEND LÀM VIỆC: Đóng gói dữ liệu thô vào UserResponse DTO để trả về
@@ -60,20 +68,26 @@ namespace ECommerce1.Controllers
 
         // ================= CẬP NHẬT THÔNG TIN CÁ NHÂN (VÀ MẬT KHẨU) =================
         [HttpPut("me")]
+        // [Hàm thực thi nghiệp vụ]: `UpdateProfile` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileRequest request)
         {
             var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (!Guid.TryParse(userIdString, out Guid userId))
+                // [Phản hồi API]: Trả về kết quả Unauthorized cho phía Client
                 return Unauthorized();
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var user = await _context.Users.FindAsync(userId);
             if (user == null)
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound("Không tìm thấy người dùng.");
 
             // Kiểm tra trùng Email nếu có thay đổi Email
             if (!string.IsNullOrEmpty(request.Email) && request.Email != user.Email)
             {
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 bool emailExists = await _context.Users.AnyAsync(u => u.Email == request.Email && u.Id != userId);
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 if (emailExists) return BadRequest("Email này đã được sử dụng bởi tài khoản khác.");
                 user.Email = request.Email;
             }
@@ -82,33 +96,41 @@ namespace ECommerce1.Controllers
             if (!string.IsNullOrEmpty(request.NewPassword))
             {
                 if (string.IsNullOrEmpty(request.OldPassword))
+                    // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                     return BadRequest("Vui lòng nhập mật khẩu cũ để đổi mật khẩu mới.");
 
                 var hasher = new Microsoft.AspNetCore.Identity.PasswordHasher<ECommerce1.Models.User>();
                 var result = hasher.VerifyHashedPassword(user, user.PasswordHash, request.OldPassword);
                 
                 if (result == Microsoft.AspNetCore.Identity.PasswordVerificationResult.Failed)
+                    // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                     return BadRequest("Mật khẩu hiện tại không chính xác.");
 
                 user.PasswordHash = hasher.HashPassword(user, request.NewPassword);
             }
 
             user.UpdatedAt = DateTime.UtcNow;
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok("Cập nhật thông tin cá nhân thành công.");
         }
 
         // ================= ĐỔI MẬT KHẨU CÁ NHÂN =================
         [HttpPut("change-password")]
+        // [Hàm thực thi nghiệp vụ]: `ChangePassword` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> ChangePassword([FromBody] ChangePasswordRequest request)
         {
             var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (!Guid.TryParse(userIdString, out Guid userId))
+                // [Phản hồi API]: Trả về kết quả Unauthorized cho phía Client
                 return Unauthorized();
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var user = await _context.Users.FindAsync(userId);
             if (user == null)
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound("Không tìm thấy người dùng.");
 
             var hasher = new Microsoft.AspNetCore.Identity.PasswordHasher<User>();
@@ -117,6 +139,7 @@ namespace ECommerce1.Controllers
             var result = hasher.VerifyHashedPassword(user, user.PasswordHash, request.OldPassword);
             if (result == Microsoft.AspNetCore.Identity.PasswordVerificationResult.Failed)
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Mật khẩu hiện tại không chính xác.");
             }
 
@@ -124,14 +147,17 @@ namespace ECommerce1.Controllers
             user.PasswordHash = hasher.HashPassword(user, request.NewPassword);
             user.UpdatedAt = DateTime.UtcNow;
 
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok("Đổi mật khẩu thành công.");
         }
 
         // ================= XEM DANH SÁCH TẤT CẢ USER (CHỈ ADMIN) =================
         [HttpGet]
         [Authorize(Roles = "Admin")]
+        // [Hàm thực thi nghiệp vụ]: `GetAllUsers` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GetAllUsers()
         {
             var users = await _context.Users
@@ -150,30 +176,37 @@ namespace ECommerce1.Controllers
                 })
                 .ToListAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(users);
         }
 
         // ================= KHÓA / MỞ KHÓA TÀI KHOẢN (CHỈ ADMIN) =================
         [HttpPut("{id}/toggle-status")]
         [Authorize(Roles = "Admin")]
+        // [Hàm thực thi nghiệp vụ]: `ToggleUserStatus` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> ToggleUserStatus(Guid id)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var user = await _context.Users.FindAsync(id);
             if (user == null)
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound("Không tìm thấy người dùng này.");
 
             // Không cho phép Admin tự khóa chính mình
             var currentUserIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (id.ToString() == currentUserIdString)
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Bạn không thể tự khóa tài khoản của chính mình.");
 
             // Đảo ngược trạng thái
             user.IsActive = !user.IsActive;
             user.UpdatedAt = DateTime.UtcNow;
 
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
             string message = user.IsActive ? "Đã MỞ KHÓA tài khoản." : "Đã KHÓA tài khoản.";
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(message);
         }
     }

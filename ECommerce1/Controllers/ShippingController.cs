@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: ShippingController.cs
+// MỤC ĐÍCH: API Controller tính phí vận chuyển động và kết nối đơn vị vận chuyển (Ahamove, GHN).
+// ==========================================================================
 using ECommerce.Models;
 using ECommerce1.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -24,10 +28,12 @@ namespace ECommerce1.Controllers
 
         // POST /api/Shipping/calculate-fee
         [HttpPost("calculate-fee")]
+        // [Hàm thực thi nghiệp vụ]: `CalculateShippingFee` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> CalculateShippingFee([FromBody] ShippingFeeRequest request)
         {
             if (string.IsNullOrEmpty(request.WardId))
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Vui lòng cung cấp mã phường/xã (WardId) hoặc tọa độ.");
             }
 
@@ -37,6 +43,7 @@ namespace ECommerce1.Controllers
 
             if (dbWard == null)
             {
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound("Không tìm thấy khu vực được chỉ định.");
             }
 

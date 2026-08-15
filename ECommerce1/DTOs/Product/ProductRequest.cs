@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: ProductRequest.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module ProductRequest
+// ==========================================================================
 namespace ECommerce1.DTOs.Product
 {
     public class ProductRequest

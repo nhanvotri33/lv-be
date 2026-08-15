@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: AuthController.cs
+// MỤC ĐÍCH: API Controller xử lý Đăng ký, Đăng nhập, Refresh Token, Đổi mật khẩu và Quên mật khẩu.
+// ==========================================================================
 using ECommerce.Models;
 using ECommerce1.DTOs.Auth;
 using ECommerce1.Models;
@@ -29,9 +33,12 @@ namespace ECommerce1.Controllers
 
         // ================= REGISTER =================
         [HttpPost("register")]
+        // [Hàm thực thi nghiệp vụ]: `Register` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> Register(RegisterRequest request)
         {
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             if (await _context.Users.AnyAsync(x => x.Username == request.Username))
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Username already exists");
 
             var user = new User
@@ -44,33 +51,41 @@ namespace ECommerce1.Controllers
 
             user.PasswordHash = _hasher.HashPassword(user, request.Password);
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             _context.Users.Add(user);
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok("Register success");
         }
 
         // ================= LOGIN =================
         [HttpPost("login")]
+        // [Hàm thực thi nghiệp vụ]: `Login` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> Login(LoginRequest request)
         {
             var user = await _context.Users
                 .FirstOrDefaultAsync(x => x.Username == request.Username || x.Email == request.Username);
 
             if (user == null)
+                // [Phản hồi API]: Trả về kết quả Unauthorized cho phía Client
                 return Unauthorized("Tên đăng nhập hoặc mật khẩu không chính xác.");
 
             if (!user.IsActive)
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Tài khoản của bạn đã bị khóa. Vui lòng liên hệ với nhân viên của cửa hàng hoặc qua SĐT:18001062.");
 
             var result = _hasher.VerifyHashedPassword(user, user.PasswordHash, request.Password);
 
             if (result == PasswordVerificationResult.Failed)
+                // [Phản hồi API]: Trả về kết quả Unauthorized cho phía Client
                 return Unauthorized("Invalid username or password");
 
             var accessToken = _tokenService.GenerateAccessToken(user);
             var refreshToken = _tokenService.GenerateRefreshToken();
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             _context.RefreshTokens.Add(new RefreshToken
             {
                 Id = Guid.NewGuid(),
@@ -79,6 +94,7 @@ namespace ECommerce1.Controllers
                 ExpiryDate = DateTime.UtcNow.AddDays(7)
             });
 
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
             // Sử dụng chính LoginRequest để làm object trả về
@@ -92,11 +108,13 @@ namespace ECommerce1.Controllers
                 AccumulatedPoints = user.AccumulatedPoints
             };
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(response);
         }
 
         // ================= GOOGLE LOGIN =================
         [HttpPost("google-login")]
+        // [Hàm thực thi nghiệp vụ]: `GoogleLogin` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GoogleLogin([FromBody] GoogleLoginRequest request)
         {
             try
@@ -104,6 +122,7 @@ namespace ECommerce1.Controllers
                 var googleClientId = _configuration["Google:ClientId"];
                 if (string.IsNullOrEmpty(googleClientId))
                 {
+                    // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                     return BadRequest("Google Client ID is not configured.");
                 }
                 var settings = new Google.Apis.Auth.GoogleJsonWebSignature.ValidationSettings()
@@ -113,9 +132,11 @@ namespace ECommerce1.Controllers
                 
                 var payload = await Google.Apis.Auth.GoogleJsonWebSignature.ValidateAsync(request.IdToken, settings);
                 
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == payload.Email);
                 if (user != null && !user.IsActive)
                 {
+                    // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                     return BadRequest("Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.");
                 }
 
@@ -131,13 +152,16 @@ namespace ECommerce1.Controllers
                         IsEmailVerified = true // Google đã xác thực
                     };
                     user.PasswordHash = _hasher.HashPassword(user, Guid.NewGuid().ToString()); // Random password
+                    // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                     _context.Users.Add(user);
+                    // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                     await _context.SaveChangesAsync();
                 }
 
                 var accessToken = _tokenService.GenerateAccessToken(user);
                 var refreshToken = _tokenService.GenerateRefreshToken();
 
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 _context.RefreshTokens.Add(new RefreshToken
                 {
                     Id = Guid.NewGuid(),
@@ -145,8 +169,10 @@ namespace ECommerce1.Controllers
                     Token = refreshToken,
                     ExpiryDate = DateTime.UtcNow.AddDays(7)
                 });
+                // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
 
+                // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                 return Ok(new LoginResponse
                 {
                     Token = accessToken,
@@ -159,12 +185,14 @@ namespace ECommerce1.Controllers
             }
             catch (Exception ex)
             {
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Xác thực Google thất bại: " + ex.Message);
             }
         }
 
         // ================= REFRESH =================
         [HttpPost("refresh")]
+        // [Hàm thực thi nghiệp vụ]: `Refresh` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> Refresh(TokenRequest request)
         {
             var storedToken = await _context.RefreshTokens
@@ -172,9 +200,11 @@ namespace ECommerce1.Controllers
                 .FirstOrDefaultAsync(x => x.Token == request.RefreshToken);
 
             if (storedToken == null || storedToken.IsRevoked || storedToken.ExpiryDate < DateTime.UtcNow)
+                // [Phản hồi API]: Trả về kết quả Unauthorized cho phía Client
                 return Unauthorized("Invalid refresh token");
 
             if (storedToken.User != null && !storedToken.User.IsActive)
+                // [Phản hồi API]: Trả về kết quả Unauthorized cho phía Client
                 return Unauthorized("Tài khoản của bạn đã bị khóa. Vui lòng liên hệ quản trị viên.");
 
             var newAccessToken = _tokenService.GenerateAccessToken(storedToken.User);
@@ -182,6 +212,7 @@ namespace ECommerce1.Controllers
 
             storedToken.IsRevoked = true;
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             _context.RefreshTokens.Add(new RefreshToken
             {
                 Id = Guid.NewGuid(),
@@ -190,8 +221,10 @@ namespace ECommerce1.Controllers
                 ExpiryDate = DateTime.UtcNow.AddDays(7)
             });
 
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(new
             {
                 accessToken = newAccessToken,
@@ -201,6 +234,7 @@ namespace ECommerce1.Controllers
 
         // ================= LOGOUT =================
         [HttpPost("logout")]
+        // [Hàm thực thi nghiệp vụ]: `Logout` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> Logout(TokenRequest request)
         {
             var token = await _context.RefreshTokens
@@ -209,24 +243,31 @@ namespace ECommerce1.Controllers
             if (token != null)
             {
                 token.IsRevoked = true;
+                // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
             }
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok("Logged out");
         }
         // ================= XỬ LÝ QUÊN MẬT KHẨU =================
         [HttpPost("forgot-password")]
+        // [Hàm thực thi nghiệp vụ]: `ForgotPassword` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> ForgotPassword([FromBody] ECommerce1.DTOs.Auth.ForgotPasswordRequest request)
         {
             if (string.IsNullOrWhiteSpace(request.Email))
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Vui lòng nhập Email hoặc Tên đăng nhập.");
 
             string inputVal = request.Email.Trim();
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == inputVal || u.Username == inputVal);
             if (user == null)
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Không tìm thấy tài khoản với thông tin này.");
 
             if (string.IsNullOrWhiteSpace(user.Email))
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Tài khoản chưa đăng ký Email nhận mã.");
 
             // Tạo mã OTP ngẫu nhiên 6 số
@@ -234,6 +275,7 @@ namespace ECommerce1.Controllers
             
             user.ResetPasswordToken = otp;
             user.ResetPasswordTokenExpiry = DateTime.UtcNow.AddMinutes(15); // Hết hạn sau 15 phút
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
             string subject = "PhoneStore - Mã xác nhận cấp lại mật khẩu";
@@ -254,24 +296,32 @@ namespace ECommerce1.Controllers
 
             await _emailService.SendEmailAsync(user.Email, subject, body);
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(new { message = "Mã xác nhận (OTP) đã được gửi đến email của bạn.", email = user.Email });
         }
 
+        // [API Endpoint POST [Route: `reset-password`]]: Tiếp nhận và xử lý yêu cầu từ Client
         [HttpPost("reset-password")]
+        // [Hàm thực thi nghiệp vụ]: `ResetPassword` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> ResetPassword([FromBody] ECommerce1.DTOs.Auth.ResetPasswordRequest request)
         {
             if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Otp) || string.IsNullOrWhiteSpace(request.NewPassword))
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Vui lòng cung cấp đầy đủ Email, Mã OTP và Mật khẩu mới.");
 
             string inputVal = request.Email.Trim();
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             var user = await _context.Users.FirstOrDefaultAsync(u => u.Email == inputVal || u.Username == inputVal);
             if (user == null)
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Tài khoản không tồn tại.");
 
             if (user.ResetPasswordToken != request.Otp.Trim())
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Mã xác nhận (OTP) không chính xác.");
 
             if (!user.ResetPasswordTokenExpiry.HasValue || user.ResetPasswordTokenExpiry.Value < DateTime.UtcNow)
+                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest("Mã xác nhận (OTP) đã hết hạn. Vui lòng yêu cầu gửi lại mã mới.");
 
             var hasher = new Microsoft.AspNetCore.Identity.PasswordHasher<User>();
@@ -282,8 +332,10 @@ namespace ECommerce1.Controllers
             user.ResetPasswordTokenExpiry = null;
             user.UpdatedAt = DateTime.UtcNow;
 
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(new { message = "Đặt lại mật khẩu thành công. Bạn có thể đăng nhập bằng mật khẩu mới." });
         }
     }

@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: Stock.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module Stock
+// ==========================================================================
 using ECommerce.Models;
 using System;
 using System.ComponentModel.DataAnnotations;

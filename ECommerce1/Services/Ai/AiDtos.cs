@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: AiDtos.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module AiDtos
+// ==========================================================================
 using System.Collections.Generic;
 
 namespace ECommerce1.Services.Ai

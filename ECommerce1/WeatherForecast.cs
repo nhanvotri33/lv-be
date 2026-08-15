@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: WeatherForecast.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module WeatherForecast
+// ==========================================================================
 namespace ECommerce1
 {
     public class WeatherForecast

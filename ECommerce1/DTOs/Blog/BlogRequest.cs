@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: BlogRequest.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module BlogRequest
+// ==========================================================================
 using System.ComponentModel.DataAnnotations;
 
 namespace ECommerce1.DTOs.Blog

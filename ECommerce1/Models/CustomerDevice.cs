@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: CustomerDevice.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module CustomerDevice
+// ==========================================================================
 using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;

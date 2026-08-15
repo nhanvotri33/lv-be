@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: ProductResponse.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module ProductResponse
+// ==========================================================================
 using System;
 
 namespace ECommerce1.DTOs.Product

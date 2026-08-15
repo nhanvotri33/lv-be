@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: CartItem.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module CartItem
+// ==========================================================================
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;

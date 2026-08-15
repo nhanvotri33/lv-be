@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: ChangePasswordRequest.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module ChangePasswordRequest
+// ==========================================================================
 namespace ECommerce1.DTOs.User
 {
     public class ChangePasswordRequest

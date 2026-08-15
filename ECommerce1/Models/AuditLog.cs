@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: AuditLog.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module AuditLog
+// ==========================================================================
 using System;
 using System.ComponentModel.DataAnnotations;
 

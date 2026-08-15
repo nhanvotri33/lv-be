@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: OrderItemResponse.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module OrderItemResponse
+// ==========================================================================
 namespace ECommerce1.DTOs.Order
 {
     public class OrderItemResponse

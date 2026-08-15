@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: CodeGeneratorHelper.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module CodeGeneratorHelper
+// ==========================================================================
 using System;
 using System.Text;
 using System.Linq;

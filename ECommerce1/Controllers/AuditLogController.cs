@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: AuditLogController.cs
+// MỤC ĐÍCH: API Controller phía Admin xem nhật ký hệ thống (Audit Logs) để kiểm toán an toàn.
+// ==========================================================================
 using ECommerce1.DTOs;
 using ECommerce1.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -18,10 +22,13 @@ namespace ECommerce1.Controllers
             _auditLogService = auditLogService;
         }
 
+        // [API Endpoint GET]: Tiếp nhận và xử lý yêu cầu từ Client
         [HttpGet]
+        // [Hàm thực thi nghiệp vụ]: `GetLogs` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GetLogs([FromQuery] AuditLogFilterDto filter)
         {
             var result = await _auditLogService.GetLogsAsync(filter);
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(result);
         }
     }

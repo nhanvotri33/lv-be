@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: ShippingInfoController.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module ShippingInfoController
+// ==========================================================================
 using ECommerce.Models;
 using ECommerce1.DTOs.ShippingInfo;
 using Microsoft.AspNetCore.Authorization;
@@ -24,10 +28,12 @@ namespace ECommerce1.Controllers
 
         // ================= LẤY DANH SÁCH ĐỊA CHỈ GIAO HÀNG =================
         [HttpGet]
+        // [Hàm thực thi nghiệp vụ]: `GetMyShippingInfos` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GetMyShippingInfos()
         {
             var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (!Guid.TryParse(userIdString, out Guid userId))
+                // [Phản hồi API]: Trả về kết quả Unauthorized cho phía Client
                 return Unauthorized();
 
             var infos = await _context.ShippingInfos
@@ -53,15 +59,18 @@ namespace ECommerce1.Controllers
                 })
                 .ToListAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(infos);
         }
 
         // ================= TẠO ĐỊA CHỈ GIAO HÀNG MỚI =================
         [HttpPost]
+        // [Hàm thực thi nghiệp vụ]: `Create` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> Create([FromBody] ShippingInfoRequest request)
         {
             var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (!Guid.TryParse(userIdString, out Guid userId))
+                // [Phản hồi API]: Trả về kết quả Unauthorized cho phía Client
                 return Unauthorized();
 
             // Nếu muốn set địa chỉ này làm mặc định, phải tắt mặc định của các địa chỉ cũ
@@ -99,27 +108,34 @@ namespace ECommerce1.Controllers
                 UpdatedAt = DateTime.UtcNow
             };
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             _context.ShippingInfos.Add(newInfo);
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok("Tạo địa chỉ giao hàng thành công.");
         }
 
         // ================= CẬP NHẬT ĐỊA CHỈ GIAO HÀNG =================
         [HttpPut("{id}")]
+        // [Hàm thực thi nghiệp vụ]: `Update` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> Update(int id, [FromBody] ShippingInfoRequest request)
         {
             var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (!Guid.TryParse(userIdString, out Guid userId))
+                // [Phản hồi API]: Trả về kết quả Unauthorized cho phía Client
                 return Unauthorized();
 
             var info = await _context.ShippingInfos
                 .FirstOrDefaultAsync(s => s.Id == id);
             
             if (info == null)
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound("Không tìm thấy địa chỉ này.");
 
             if (info.UserId != userId)
+                // [Phản hồi API]: Trả về kết quả StatusCode cho phía Client
                 return StatusCode(403, "Bạn không có quyền sửa địa chỉ của người khác.");
 
 
@@ -148,31 +164,39 @@ namespace ECommerce1.Controllers
             if (request.Longitude.HasValue) info.Longitude = request.Longitude;
             info.UpdatedAt = DateTime.UtcNow;
 
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok("Cập nhật địa chỉ thành công.");
         }
 
         // ================= XÓA ĐỊA CHỈ GIAO HÀNG =================
         [HttpDelete("{id}")]
+        // [Hàm thực thi nghiệp vụ]: `Delete` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> Delete(int id)
         {
             var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (!Guid.TryParse(userIdString, out Guid userId))
+                // [Phản hồi API]: Trả về kết quả Unauthorized cho phía Client
                 return Unauthorized();
 
             var info = await _context.ShippingInfos
                 .FirstOrDefaultAsync(s => s.Id == id);
 
             if (info == null)
+                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound("Không tìm thấy địa chỉ này.");
 
             if (info.UserId != userId)
+                // [Phản hồi API]: Trả về kết quả StatusCode cho phía Client
                 return StatusCode(403, "Bạn không có quyền xóa địa chỉ của người khác.");
 
             bool wasDefault = info.IsDefault;
 
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             _context.ShippingInfos.Remove(info);
+            // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
             // Nếu địa chỉ bị xóa là địa chỉ mặc định, tự động gán địa chỉ còn lại gần nhất làm mặc định
@@ -192,11 +216,13 @@ namespace ECommerce1.Controllers
                     if (newDefault != null)
                     {
                         newDefault.IsDefault = true;
+                        // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                         await _context.SaveChangesAsync();
                     }
                 }
             }
 
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok("Đã xóa địa chỉ thành công.");
         }
     }

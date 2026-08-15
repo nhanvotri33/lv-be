@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: Brand.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module Brand
+// ==========================================================================
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;

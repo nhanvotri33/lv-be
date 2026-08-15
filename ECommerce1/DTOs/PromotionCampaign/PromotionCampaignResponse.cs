@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: PromotionCampaignResponse.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module PromotionCampaignResponse
+// ==========================================================================
 using System;
 using System.Collections.Generic;
 

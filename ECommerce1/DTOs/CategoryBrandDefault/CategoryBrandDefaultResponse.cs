@@ -1,3 +1,7 @@
+// ==========================================================================
+// MODULE: CategoryBrandDefaultResponse.cs
+// MỤC ĐÍCH: File mã nguồn C# xử lý module CategoryBrandDefaultResponse
+// ==========================================================================
 using System;
 
 namespace ECommerce1.DTOs.CategoryBrandDefault
