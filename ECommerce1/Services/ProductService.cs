@@ -238,6 +238,53 @@ namespace ECommerce1.Services
             };
         }
 
+        public async Task<ProductResponse> GetBySlugAsync(string slug)
+        {
+            var product = await _context.Products
+                .Include(p => p.Brand)
+                .Include(p => p.Reviews)
+                .Include(p => p.Category)
+                    .ThenInclude(c => c.ParentCategory)
+                .FirstOrDefaultAsync(p => p.Slug == slug);
+
+            if (product == null)
+                throw new KeyNotFoundException($"Không tìm thấy sản phẩm với slug: {slug}");
+
+            var validCategoryIds = await GetValidCategoryIdsAsync();
+            bool isAvailable = product.IsActive && validCategoryIds.Contains(product.CategoryId) && (product.BrandId == null || (product.Brand != null && product.Brand.IsActive != false));
+
+            return new ProductResponse
+            {
+                Id = product.Id,
+                Name = product.Name,
+                Slug = product.Slug,
+                ProductCode = product.ProductCode,
+                Description = product.Description,
+                Specs = product.Specs,
+                BasePrice = product.BasePrice,
+                OriginalPrice = product.OriginalPrice,
+                TotalStock = product.TotalStock,
+                ReservedStock = product.ReservedStock,
+                AvailableStock = product.AvailableStock,
+                IsActive = product.IsActive,
+                IsFeatured = product.IsFeatured,
+                CreatedAt = product.CreatedAt,
+                UpdatedAt = product.UpdatedAt,
+                CategoryId = product.CategoryId,
+                BrandId = product.BrandId,
+                BrandName = product.Brand != null ? product.Brand.Name : null,
+                ThumbnailImage = product.ThumbnailImage,
+                MainImage = product.MainImage,
+                Images = product.Images,
+                VideoUrl = product.VideoUrl,
+                IsAvailable = isAvailable,
+                BrandIsActive = product.Brand != null ? (bool?)product.Brand.IsActive : null,
+                AverageRating = product.Reviews != null && product.Reviews.Any(r => !r.IsHidden) ? product.Reviews.Where(r => !r.IsHidden).Average(r => r.Rating) : 5.0,
+                ReviewCount = product.Reviews != null ? product.Reviews.Count(r => !r.IsHidden) : 0,
+                IsAccessory = CheckIsAccessory(product)
+            };
+        }
+
         // [Hàm thực thi nghiệp vụ]: `CreateAsync` - Xử lý logic và luồng dữ liệu
         public async Task<int> CreateAsync(ProductRequest request)
         {

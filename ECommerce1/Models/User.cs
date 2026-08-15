@@ -28,6 +28,9 @@ namespace ECommerce1.Models
         public string? ResetPasswordToken { get; set; }
         public DateTime? ResetPasswordTokenExpiry { get; set; }
 
+        public string? EmailVerificationToken { get; set; }
+        public DateTime? EmailVerificationExpiry { get; set; }
+
         // Audit
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
         public DateTime? UpdatedAt { get; set; }

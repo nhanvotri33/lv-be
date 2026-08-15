@@ -165,6 +165,19 @@ namespace ECommerce1.Services
         /// </summary>
         public async Task<object> CheckoutAsync(Guid userId, CheckoutRequest request)
         {
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null) 
+                throw new KeyNotFoundException("Không tìm thấy thông tin tài khoản.");
+
+            var method = request.PaymentMethod?.Trim().ToUpper();
+            if (method == "COD" || method == "THANH TOÁN KHI NHẬN HÀNG")
+            {
+                if (!user.IsEmailVerified)
+                {
+                    throw new InvalidOperationException("Vui lòng xác thực Email trước khi chọn phương thức Thanh toán khi nhận hàng (COD).");
+                }
+            }
+
             // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             using var transaction = await _context.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
             try
@@ -349,9 +362,6 @@ namespace ECommerce1.Services
                 }
 
                 // 5. Xử lý điểm thành viên và giá thanh toán cuối cùng
-                var user = await _context.Users.FindAsync(userId);
-                if (user == null) 
-                    throw new KeyNotFoundException("Không tìm thấy thông tin tài khoản.");
 
                 int pointsRedeemed = 0;
                 decimal discountFromPoints = 0;

@@ -38,12 +38,19 @@ namespace ECommerce1.Controllers
         }
 
         // [API Endpoint GET [Route: `{id}`]]: Tiếp nhận và xử lý yêu cầu từ Client
-        [HttpGet("{id}")]
+        [HttpGet("{id:int}")]
         // [Hàm thực thi nghiệp vụ]: `GetById` - Xử lý logic và luồng dữ liệu
         public async Task<IActionResult> GetById(int id)
         {
             var product = await _productService.GetByIdAsync(id);
             // [Phản hồi API]: Trả về kết quả Ok cho phía Client
+            return Ok(product);
+        }
+
+        [HttpGet("{slug}")]
+        public async Task<IActionResult> GetBySlug(string slug)
+        {
+            var product = await _productService.GetBySlugAsync(slug);
             return Ok(product);
         }
 

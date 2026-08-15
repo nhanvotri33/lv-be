@@ -56,6 +56,7 @@ namespace ECommerce1.Controllers
                 Email = user.Email,
                 Role = user.Role,
                 IsActive = user.IsActive,
+                IsEmailVerified = user.IsEmailVerified,
                 RewardPoints = user.RewardPoints,           // Điểm khả dụng để tiêu dùng
                 AccumulatedPoints = user.AccumulatedPoints, // Điểm tích lũy trọn đời xét hạng
                 CreatedAt = user.CreatedAt,
@@ -82,22 +83,42 @@ namespace ECommerce1.Controllers
                 // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound("Không tìm thấy người dùng.");
 
-            // Kiểm tra trùng Email nếu có thay đổi Email
-            if (!string.IsNullOrEmpty(request.Email) && request.Email != user.Email)
+            // 1. Cập nhật Username nếu có thay đổi
+            if (!string.IsNullOrWhiteSpace(request.Username) && request.Username.Trim() != user.Username)
             {
-                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
-                bool emailExists = await _context.Users.AnyAsync(u => u.Email == request.Email && u.Id != userId);
-                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
-                if (emailExists) return BadRequest("Email này đã được sử dụng bởi tài khoản khác.");
-                user.Email = request.Email;
+                var cleanUsername = request.Username.Trim();
+                bool usernameExists = await _context.Users.AnyAsync(u => u.Username.ToLower() == cleanUsername.ToLower() && u.Id != userId);
+                if (usernameExists) return BadRequest("Tên tài khoản này đã được sử dụng bởi người dùng khác.");
+                user.Username = cleanUsername;
             }
 
-            // Nếu người dùng nhập mật khẩu mới, tiến hành đổi mật khẩu
-            if (!string.IsNullOrEmpty(request.NewPassword))
+            // 2. Cập nhật Email nếu có thay đổi
+            if (!string.IsNullOrWhiteSpace(request.Email) && request.Email.Trim().ToLower() != user.Email.ToLower())
             {
-                if (string.IsNullOrEmpty(request.OldPassword))
+                var cleanEmail = request.Email.Trim().ToLower();
+                if (!cleanEmail.Contains("@") || !cleanEmail.Contains("."))
+                {
+                    return BadRequest("Địa chỉ Email không hợp lệ.");
+                }
+
+                bool emailExists = await _context.Users.AnyAsync(u => u.Email.ToLower() == cleanEmail && u.Id != userId);
+                if (emailExists) return BadRequest("Email này đã được sử dụng bởi tài khoản khác.");
+
+                user.Email = cleanEmail;
+                user.IsEmailVerified = false; // Reset trạng thái xác thực email khi người dùng thay đổi sang email mới
+                user.EmailVerificationToken = null;
+                user.EmailVerificationExpiry = null;
+            }
+
+            // 3. Nếu người dùng nhập mật khẩu mới, tiến hành đổi mật khẩu
+            if (!string.IsNullOrWhiteSpace(request.NewPassword))
+            {
+                if (string.IsNullOrWhiteSpace(request.OldPassword))
                     // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                     return BadRequest("Vui lòng nhập mật khẩu cũ để đổi mật khẩu mới.");
+
+                if (request.NewPassword.Length < 6)
+                    return BadRequest("Mật khẩu mới phải có ít nhất 6 ký tự.");
 
                 var hasher = new Microsoft.AspNetCore.Identity.PasswordHasher<ECommerce1.Models.User>();
                 var result = hasher.VerifyHashedPassword(user, user.PasswordHash, request.OldPassword);
@@ -114,7 +135,7 @@ namespace ECommerce1.Controllers
             await _context.SaveChangesAsync();
 
             // [Phản hồi API]: Trả về kết quả Ok cho phía Client
-            return Ok("Cập nhật thông tin cá nhân thành công.");
+            return Ok(new { message = "Cập nhật thông tin cá nhân thành công.", isEmailVerified = user.IsEmailVerified });
         }
 
         // ================= ĐỔI MẬT KHẨU CÁ NHÂN =================
@@ -169,6 +190,7 @@ namespace ECommerce1.Controllers
                     Email = u.Email,
                     Role = u.Role,
                     IsActive = u.IsActive,
+                    IsEmailVerified = u.IsEmailVerified,
                     RewardPoints = u.RewardPoints,
                     AccumulatedPoints = u.AccumulatedPoints,
                     CreatedAt = u.CreatedAt,
