@@ -111,6 +111,22 @@ namespace ECommerce.Models
                 .IsRequired(false)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            modelBuilder.Entity<ReturnRequest>(entity =>
+            {
+                entity.HasOne(r => r.User)
+                      .WithMany()
+                      .HasForeignKey(r => r.UserId)
+                      .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<ReturnItem>(entity =>
+            {
+                entity.HasOne(ri => ri.OrderItem)
+                      .WithMany()
+                      .HasForeignKey(ri => ri.OrderItemId)
+                      .OnDelete(DeleteBehavior.Restrict);
+            });
+
             // Seed OrderStatus
             modelBuilder.Entity<OrderStatus>().HasData(
                 new OrderStatus { Id = 1, Name = "Pending", Description = "Chờ thanh toán" },

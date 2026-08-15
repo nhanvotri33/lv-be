@@ -13,6 +13,7 @@ namespace ECommerce1.DTOs.User
         public string Email { get; set; }
         public string Role { get; set; }
         public bool IsActive { get; set; }
+        public bool IsEmailVerified { get; set; }
         public int RewardPoints { get; set; }
         public int AccumulatedPoints { get; set; }
         public DateTime CreatedAt { get; set; }

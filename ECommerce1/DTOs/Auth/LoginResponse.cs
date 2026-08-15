@@ -10,6 +10,7 @@ namespace ECommerce1.DTOs.Auth
         public string RefreshToken { get; set; }
         public Guid Id { get; set; }
         public string Role { get; set; }
+        public bool IsEmailVerified { get; set; }
         public int RewardPoints { get; set; }
         public int AccumulatedPoints { get; set; }
     }

@@ -141,6 +141,12 @@ namespace ECommerce1.Controllers
                 return Unauthorized(new { message = "Vui lòng đăng nhập." });
             }
 
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null || !user.IsEmailVerified)
+            {
+                return BadRequest(new { message = "Vui lòng xác thực Email trước khi gửi yêu cầu kích hoạt bảo hành." });
+            }
+
             var orderItem = await _context.OrderItems
                 .Include(oi => oi.Order)
                 .Include(oi => oi.CustomerDevice)

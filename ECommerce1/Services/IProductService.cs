@@ -19,6 +19,7 @@ namespace ECommerce1.Services
             string? sortOrder = null,
             bool includeInactive = false);
         Task<ProductResponse> GetByIdAsync(int id);
+        Task<ProductResponse> GetBySlugAsync(string slug);
         Task<int> CreateAsync(ProductRequest request);
         Task UpdateAsync(int id, ProductRequest request);
         Task DeleteAsync(int id);
