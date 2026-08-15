@@ -17,11 +17,13 @@ namespace ECommerce1.Services
     {
         private readonly ApplicationDbContext _context;
         private readonly IFileService _fileService;
+        private readonly NotificationService _notificationService;
 
-        public ProductVariantService(ApplicationDbContext context, IFileService fileService)
+        public ProductVariantService(ApplicationDbContext context, IFileService fileService, NotificationService notificationService)
         {
             _context = context;
             _fileService = fileService;
+            _notificationService = notificationService;
         }
 
         // [Hàm thực thi nghiệp vụ]: `GetAllAsync` - Xử lý logic và luồng dữ liệu
@@ -281,6 +283,9 @@ namespace ECommerce1.Services
             var product = await _context.Products.FindAsync(request.ProductId);
             var imageId = !string.IsNullOrEmpty(request.ImageId) ? request.ImageId : (product?.ThumbnailImage ?? "");
 
+            decimal oldPrice = variant.Price;
+            int oldStock = variant.TotalStock;
+
             variant.Name = request.Name;
             variant.Sku = finalSku;
             variant.Price = request.Price;
@@ -298,6 +303,16 @@ namespace ECommerce1.Services
             if (newProductId != oldProductId)
             {
                 await SyncParentProductStockAsync(newProductId);
+            }
+
+            // Gửi thông báo nếu có giảm giá hoặc hàng về
+            if (request.Price < oldPrice)
+            {
+                await _notificationService.NotifyPriceDropAsync(request.ProductId, oldPrice, request.Price);
+            }
+            if (oldStock <= 0 && request.TotalStock > 0)
+            {
+                await _notificationService.NotifyRestockAsync(request.ProductId, oldStock, request.TotalStock);
             }
         }
 
