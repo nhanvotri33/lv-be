@@ -60,6 +60,8 @@ namespace ECommerce.Models
         public DbSet<Warranty> Warranties { get; set; }
         public DbSet<WarrantyPackageRule> WarrantyPackageRules { get; set; }
         public DbSet<CustomerDevice> CustomerDevices { get; set; }
+        public DbSet<Wishlist> Wishlists { get; set; }
+        public DbSet<UserNotification> UserNotifications { get; set; }
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
             if (!optionsBuilder.IsConfigured)
@@ -71,6 +73,37 @@ namespace ECommerce.Models
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
+
+            // Wishlist Configuration
+            modelBuilder.Entity<Wishlist>(entity =>
+            {
+                entity.HasIndex(w => new { w.UserId, w.ProductId }).IsUnique();
+
+                entity.HasOne(w => w.User)
+                    .WithMany()
+                    .HasForeignKey(w => w.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(w => w.Product)
+                    .WithMany()
+                    .HasForeignKey(w => w.ProductId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // UserNotification Configuration
+            modelBuilder.Entity<UserNotification>(entity =>
+            {
+                entity.HasOne(n => n.User)
+                    .WithMany()
+                    .HasForeignKey(n => n.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(n => n.Product)
+                    .WithMany()
+                    .HasForeignKey(n => n.ProductId)
+                    .IsRequired(false)
+                    .OnDelete(DeleteBehavior.SetNull);
+            });
 
             // CategoryBrandDefault unique index and cascade delete relationships
             modelBuilder.Entity<CategoryBrandDefault>(entity =>
