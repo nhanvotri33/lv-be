@@ -284,16 +284,6 @@ namespace ECommerce1.Controllers
             }
         }
 
-        // ================= MOMO WEBHOOK IPN ENDPOINT =================
-        [HttpPost("momo-webhook")]
-        [AllowAnonymous]
-        // [Hàm thực thi nghiệp vụ]: `MomoWebhook` - Xử lý logic và luồng dữ liệu
-        public async Task<IActionResult> MomoWebhook()
-        {
-            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
-            return Ok();
-        }
-
         // [API Endpoint GET [Route: `vnpay-ipn`]]: Tiếp nhận và xử lý yêu cầu từ Client
         [HttpGet("vnpay-ipn")]
         [AllowAnonymous]

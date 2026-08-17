@@ -18,7 +18,7 @@ namespace ECommerce1.DTOs.Order
         public double? DeliveryLongitude { get; set; }
 
         public string? PromotionCode { get; set; } // Mã giảm giá (nếu có)
-        public string? PaymentMethod { get; set; } // COD, Stripe, Momo, etc.
+        public string? PaymentMethod { get; set; } // COD, Stripe, VNPay, etc.
         public int PointsToRedeem { get; set; } = 0;
         public string? Note { get; set; } // Ghi chú giao hàng
         public string? ShippingCarrier { get; set; } // Ahamove Siêu Tốc, Giao Hàng Tiêu Chuẩn, v.v.
