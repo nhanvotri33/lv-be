@@ -112,6 +112,8 @@ namespace ECommerce1.Controllers
                                 price = price * (1 - campaign.DiscountValue / 100);
                             else if (campaign.DiscountType == "FixedAmount")
                                 price = Math.Max(0, price - campaign.DiscountValue);
+                            else if (campaign.DiscountType == "FixedPrice")
+                                price = campaign.DiscountValue;
                         }
                         else
                         {
