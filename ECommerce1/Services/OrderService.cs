@@ -854,7 +854,7 @@ namespace ECommerce1.Services
                     }
                 }
 
-                // Cập nhật trạng thái bảng Payments tương ứng với mọi cổng thanh toán (VNPay, Stripe, MoMo...)
+                // Cập nhật trạng thái bảng Payments tương ứng với mọi cổng thanh toán (VNPay, Stripe...)
                 var orderPayments = await _context.Payments
                     .Where(p => p.OrderId == order.Id)
                     .ToListAsync();
@@ -905,6 +905,32 @@ namespace ECommerce1.Services
                         {
                             p.Status = "succeeded";
                             p.UpdatedAt = DateTime.UtcNow;
+                        }
+                    }
+
+                    // Tự động tạo bản ghi thanh toán COD trong bảng Payments khi khách nhận hàng và trả tiền thành công
+                    var isCod = string.Equals(order.PaymentMethod, "COD", StringComparison.OrdinalIgnoreCase)
+                             || (!string.IsNullOrEmpty(order.PaymentMethod) && order.PaymentMethod.Contains("THANH TOÁN KHI NHẬN HÀNG", StringComparison.OrdinalIgnoreCase));
+
+                    if (isCod)
+                    {
+                        var hasSucceededCod = orderPayments.Any(p => p.Provider.Equals("COD", StringComparison.OrdinalIgnoreCase) && p.Status == "succeeded");
+                        if (!hasSucceededCod)
+                        {
+                            var codPayment = new ECommerce.Models.Payment
+                            {
+                                OrderId = order.Id,
+                                UserId = order.UserId,
+                                Provider = "COD",
+                                ProviderSessionId = $"COD-SESSION-{order.Id}",
+                                ProviderTransactionId = $"COD-RECV-{DateTime.UtcNow:yyyyMMddHHmmss}-{order.Id}",
+                                Amount = order.TotalPrice,
+                                Currency = "VND",
+                                Status = "succeeded",
+                                CreatedAt = DateTime.UtcNow,
+                                UpdatedAt = DateTime.UtcNow
+                            };
+                            _context.Payments.Add(codPayment);
                         }
                     }
                 }
