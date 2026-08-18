@@ -16,7 +16,6 @@ namespace ECommerce1.Services
         Task<IEnumerable<OrderResponse>> GetAllOrdersAsync();
         Task<object> CheckoutAsync(Guid userId, CheckoutRequest request);
         Task CancelOrderAsync(int id, Guid? userId, string? phoneNumber);
-        Task CancelFailedPaymentOrderAsync(int orderId, bool restoreCart = true);
         Task UpdateOrderStatusAsync(int id, int newStatusId);
         Task<OrderResponse> TrackOrderAsync(int id, string phoneNumber);
         Task<OrderResponse> ShipWithAhamoveAsync(int orderId);

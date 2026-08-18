@@ -63,7 +63,6 @@ namespace ECommerce1.Services
                     ShippingAddress = $"{o.ShippingAddressLine}, {o.ShippingWard}, {o.ShippingProvince}",
                     PaymentMethod = o.PaymentMethod,
                     PromotionCode = o.Promotion != null ? o.Promotion.Code : null,
-                    DiscountApplied = o.Promotion != null ? Math.Max(0, o.OrderItems.Sum(oi => oi.Quantity * (oi.PriceAtPurchase + oi.WarrantyPrice)) + (o.ActualShippingFee ?? 0) - o.DiscountFromPoints - o.TotalPrice) : 0,
                     PointsEarned = o.PointsEarned,
                     PointsRedeemed = o.PointsRedeemed,
                     DiscountFromPoints = o.DiscountFromPoints,
@@ -122,7 +121,6 @@ namespace ECommerce1.Services
                     ShippingAddress = $"{o.ShippingAddressLine}, {o.ShippingWard}, {o.ShippingProvince}",
                     PaymentMethod = o.PaymentMethod,
                     PromotionCode = o.Promotion != null ? o.Promotion.Code : null,
-                    DiscountApplied = o.Promotion != null ? Math.Max(0, o.OrderItems.Sum(oi => oi.Quantity * (oi.PriceAtPurchase + oi.WarrantyPrice)) + (o.ActualShippingFee ?? 0) - o.DiscountFromPoints - o.TotalPrice) : 0,
                     PointsEarned = o.PointsEarned,
                     PointsRedeemed = o.PointsRedeemed,
                     DiscountFromPoints = o.DiscountFromPoints,
@@ -200,7 +198,9 @@ namespace ECommerce1.Services
                 var variantIds = cart.CartItems.Select(ci => ci.VariantId).Distinct().ToList();
                 foreach (var vId in variantIds)
                 {
-                    await _context.Database.ExecuteSqlRawAsync("SELECT TOP 1 1 FROM ProductVariants WITH (UPDLOCK, HOLDLOCK) WHERE Id = {0}", vId);
+                    await _context.ProductVariants
+                        .FromSqlRaw("SELECT * FROM ProductVariants WITH (UPDLOCK, HOLDLOCK) WHERE Id = {0}", vId)
+                        .FirstOrDefaultAsync();
                 }
 
                 // 3. Kiểm tra tồn kho trước khi đặt
@@ -213,151 +213,96 @@ namespace ECommerce1.Services
                 // 3. Tính tổng tiền & Xử lý giá Combo
                 decimal subTotal = 0;
                 var calculatedPrices = new System.Collections.Generic.Dictionary<int, decimal>();
+
                 var cartItemsList = cart.CartItems.ToList();
-
-                // Lấy danh sách tất cả chiến dịch Combo đang hoạt động (cùng AddonProductRules để xác định sản phẩm phụ)
-                var activeCampaigns = await _context.PromotionCampaigns
-                    .Include(c => c.MainProductRules)
-                    .Include(c => c.AddonProductRules)
-                    .Where(c => c.IsActive)
-                    .ToListAsync();
-
-                // Xây dựng tập hợp sản phẩm chính trong giỏ hàng (để kiểm tra combo)
-                var mainProductIds = new System.Collections.Generic.HashSet<int>();
-                foreach (var ci in cartItemsList)
-                {
-                    if (ci.ProductVariant?.ProductId > 0)
-                        mainProductIds.Add(ci.ProductVariant.ProductId);
-                }
-
                 foreach (var item in cartItemsList)
                 {
                     decimal price = item.ProductVariant.Price;
-                    int itemProductId = item.ProductVariant?.ProductId ?? 0;
 
-                    // Tìm campaign áp dụng cho item này:
-                    // Ưu tiên 1: dùng AppliedCampaignId nếu có (từ FE gửi qua sync)
-                    // Ưu tiên 2: tự quét tất cả campaign, tìm campaign có AddonProductRules khớp productId của item này
-                    PromotionCampaign matchedCampaign = null;
-
-                    if (item.AppliedCampaignId.HasValue)
+                    if (item.AppliedCampaignId.HasValue && item.IsAddon)
                     {
-                        // FE đã chỉ định campaign cụ thể
-                        var candidate = activeCampaigns.FirstOrDefault(c => c.Id == item.AppliedCampaignId.Value);
-                        if (candidate != null && candidate.AddonProductRules != null)
+                        var campaign = await _context.PromotionCampaigns
+                            .Include(c => c.MainProductRules)
+                            .FirstOrDefaultAsync(c => c.Id == item.AppliedCampaignId.Value && c.IsActive && c.StartDate <= DateTime.UtcNow && c.EndDate >= DateTime.UtcNow);
+
+                        if (campaign != null)
                         {
-                            // Xác nhận item này thực sự là addon của campaign đó
-                            bool isAddonOfCampaign = candidate.AddonProductRules.Any(r =>
-                                r.ProductId.HasValue && r.ProductId.Value == itemProductId
-                            );
-                            // Nếu không khớp ProductId trực tiếp, vẫn chấp nhận (category/brand check phức tạp hơn, bỏ qua)
-                            matchedCampaign = candidate;
-                        }
-                    }
-
-                    if (matchedCampaign == null && itemProductId > 0)
-                    {
-                        // Tự động tìm campaign phù hợp: item phải nằm trong AddonProductRules
-                        foreach (var campaign in activeCampaigns)
-                        {
-                            if (campaign.AddonProductRules == null || !campaign.AddonProductRules.Any()) continue;
-
-                            bool itemIsAddon = campaign.AddonProductRules.Any(r =>
-                                r.ProductId.HasValue && r.ProductId.Value == itemProductId
-                            );
-
-                            if (!itemIsAddon) continue;
-
-                            // Kiểm tra có ít nhất 1 sản phẩm chính trong giỏ hàng khớp MainProductRules
-                            bool hasMainProduct = false;
-                            if (campaign.MainProductRules == null || !campaign.MainProductRules.Any())
+                            // Tìm sản phẩm chính trong giỏ hàng
+                            CartItem parentItem = null;
+                            if (item.ParentCartItemId.HasValue)
                             {
-                                // Không có ràng buộc sản phẩm chính -> bất kỳ item nào khác đều là chính
-                                hasMainProduct = cartItemsList.Any(ci => ci.Id != item.Id && ci.ProductVariant?.ProductId != itemProductId);
+                                parentItem = cartItemsList.FirstOrDefault(ci => ci.Id == item.ParentCartItemId && !ci.IsAddon);
+                            }
+                            
+                            if (parentItem == null)
+                            {
+                                // Tự động tìm sản phẩm chính thỏa mãn điều kiện chiến dịch (Logic AND trong dòng, OR giữa các dòng)
+                                foreach (var ci in cartItemsList.Where(ci => !ci.IsAddon))
+                                {
+                                    if (campaign.MainProductRules == null || !campaign.MainProductRules.Any())
+                                    {
+                                        parentItem = ci;
+                                        break;
+                                    }
+
+                                    var ancestorCatIds = await GetAncestorCategoryIds(ci.ProductVariant.Product.CategoryId);
+                                    foreach (var rule in campaign.MainProductRules)
+                                    {
+                                        bool matchesRule = true;
+                                        if (rule.ProductId.HasValue && rule.ProductId.Value != ci.ProductVariant.ProductId)
+                                            matchesRule = false;
+                                        if (matchesRule && rule.CategoryId.HasValue && !ancestorCatIds.Contains(rule.CategoryId.Value))
+                                            matchesRule = false;
+                                        if (matchesRule && rule.BrandId.HasValue && rule.BrandId.Value != ci.ProductVariant.Product.BrandId)
+                                            matchesRule = false;
+
+                                        if (matchesRule)
+                                        {
+                                            parentItem = ci;
+                                            break;
+                                        }
+                                    }
+
+                                    if (parentItem != null) break;
+                                }
+                            }
+
+                            if (parentItem != null)
+                            {
+                                item.ParentCartItemId = parentItem.Id; // Cập nhật liên kết
+
+                                // Ràng buộc số lượng sản phẩm phụ theo tỷ lệ sản phẩm chính
+                                int allowedMaxQty = parentItem.Quantity * campaign.MaxQuantityAllowed;
+                                if (item.Quantity > allowedMaxQty)
+                                {
+                                    string pName = item.ProductVariant?.Product?.Name ?? item.ProductVariant?.Name ?? "Sản phẩm";
+                                    throw new ArgumentException($"Sản phẩm phụ '{pName}' vượt quá số lượng mua kèm cho phép ({allowedMaxQty} sản phẩm cho {parentItem.Quantity} sản phẩm chính).");
+                                }
+
+                                if (campaign.DiscountType == "Percentage")
+                                {
+                                    decimal calculatedDiscount = price * (campaign.DiscountValue / 100m);
+                                    if (campaign.MaxDiscountAmount.HasValue && calculatedDiscount > campaign.MaxDiscountAmount.Value)
+                                    {
+                                        calculatedDiscount = campaign.MaxDiscountAmount.Value;
+                                    }
+                                    price = Math.Max(0, price - calculatedDiscount);
+                                }
+                                else if (campaign.DiscountType == "FixedAmount")
+                                {
+                                    price = Math.Max(0, price - campaign.DiscountValue);
+                                }
+                                else if (campaign.DiscountType == "FixedPrice")
+                                {
+                                    price = campaign.DiscountValue;
+                                }
                             }
                             else
                             {
-                                foreach (var ci in cartItemsList.Where(ci => ci.Id != item.Id))
-                                {
-                                    int? cCatId = ci.ProductVariant?.Product?.CategoryId;
-                                    var ancestorCatIds = cCatId.HasValue ? await GetAncestorCategoryIds(cCatId.Value) : new System.Collections.Generic.HashSet<int>();
-                                    bool ciMatchesMain = campaign.MainProductRules.Any(r =>
-                                        (r.ProductId.HasValue && r.ProductId.Value == ci.ProductVariant?.ProductId) ||
-                                        (r.CategoryId.HasValue && ancestorCatIds.Contains(r.CategoryId.Value)) ||
-                                        (r.BrandId.HasValue && ci.ProductVariant?.Product != null && r.BrandId.Value == ci.ProductVariant.Product.BrandId)
-                                    );
-                                    if (ciMatchesMain) { hasMainProduct = true; break; }
-                                }
-                            }
-
-                            if (hasMainProduct)
-                            {
-                                matchedCampaign = campaign;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (matchedCampaign != null)
-                    {
-                        // Tìm sản phẩm chính trong giỏ hàng
-                        CartItem parentItem = null;
-                        if (item.ParentCartItemId.HasValue)
-                        {
-                            parentItem = cartItemsList.FirstOrDefault(ci => ci.Id == item.ParentCartItemId.Value);
-                        }
-
-                        if (parentItem == null)
-                        {
-                            foreach (var ci in cartItemsList.Where(ci => ci.Id != item.Id))
-                            {
-                                if (matchedCampaign.MainProductRules == null || !matchedCampaign.MainProductRules.Any())
-                                {
-                                    if (ci.ProductVariant?.ProductId != itemProductId) { parentItem = ci; break; }
-                                }
-                                else
-                                {
-                                    int? cCatId = ci.ProductVariant?.Product?.CategoryId;
-                                    var ancestorCatIds = cCatId.HasValue ? await GetAncestorCategoryIds(cCatId.Value) : new System.Collections.Generic.HashSet<int>();
-                                    bool matches = matchedCampaign.MainProductRules.Any(r =>
-                                        (r.ProductId.HasValue && r.ProductId.Value == ci.ProductVariant?.ProductId) ||
-                                        (r.CategoryId.HasValue && ancestorCatIds.Contains(r.CategoryId.Value)) ||
-                                        (r.BrandId.HasValue && ci.ProductVariant?.Product != null && r.BrandId.Value == ci.ProductVariant.Product.BrandId)
-                                    );
-                                    if (matches) { parentItem = ci; break; }
-                                }
-                            }
-                        }
-
-                        if (parentItem != null)
-                        {
-                            item.IsAddon = true;
-                            item.AppliedCampaignId = matchedCampaign.Id;
-                            item.ParentCartItemId = parentItem.Id;
-
-                            // Ràng buộc số lượng sản phẩm phụ theo tỷ lệ sản phẩm chính
-                            int allowedMaxQty = parentItem.Quantity * matchedCampaign.MaxQuantityAllowed;
-                            if (item.Quantity > allowedMaxQty)
-                            {
-                                string pName = item.ProductVariant?.Product?.Name ?? item.ProductVariant?.Name ?? "Sản phẩm";
-                                throw new ArgumentException($"Sản phẩm phụ '{pName}' vượt quá số lượng mua kèm cho phép ({allowedMaxQty} sản phẩm cho {parentItem.Quantity} sản phẩm chính).");
-                            }
-
-                            string discType = matchedCampaign.DiscountType ?? "";
-                            if (string.Equals(discType, "Percentage", StringComparison.OrdinalIgnoreCase))
-                            {
-                                decimal calculatedDiscount = price * (matchedCampaign.DiscountValue / 100m);
-                                if (matchedCampaign.MaxDiscountAmount.HasValue && calculatedDiscount > matchedCampaign.MaxDiscountAmount.Value)
-                                    calculatedDiscount = matchedCampaign.MaxDiscountAmount.Value;
-                                price = Math.Max(0, price - calculatedDiscount);
-                            }
-                            else if (string.Equals(discType, "FixedAmount", StringComparison.OrdinalIgnoreCase))
-                            {
-                                price = Math.Max(0, price - matchedCampaign.DiscountValue);
-                            }
-                            else if (string.Equals(discType, "FixedPrice", StringComparison.OrdinalIgnoreCase))
-                            {
-                                price = matchedCampaign.DiscountValue;
+                                // Không có sản phẩm chính tương ứng -> Hủy khuyến mãi
+                                item.AppliedCampaignId = null;
+                                item.ParentCartItemId = null;
+                                item.IsAddon = false;
                             }
                         }
                     }
@@ -514,10 +459,12 @@ namespace ECommerce1.Services
                 // Fallback nếu không có tọa độ, API Ahamove gặp sự cố, hoặc khách chọn Giao Hàng Tiêu Chuẩn
                 if (!isAhamoveCalculated)
                 {
-                    decimal baseFee = 45000;
-                    if (!string.IsNullOrEmpty(shippingProvince) && shippingProvince.Contains("Hồ Chí Minh", StringComparison.OrdinalIgnoreCase))
+                    decimal baseFee = 35000;
+                    if (shippingProvince.Contains("Hồ Chí Minh", StringComparison.OrdinalIgnoreCase) || 
+                        shippingProvince.Contains("Hà Nội", StringComparison.OrdinalIgnoreCase) || 
+                        shippingProvince.Contains("Đà Nẵng", StringComparison.OrdinalIgnoreCase))
                     {
-                        baseFee = 28000;
+                        baseFee = 100000; //shop tu giao hang, bam gom phi bao hiem roi vo 
                     }
                     shippingFee = baseFee;
                 }
@@ -741,23 +688,6 @@ namespace ECommerce1.Services
                     userObj.RewardPoints += order.PointsRedeemed;
                 }
 
-                // Hoàn lại mã giảm giá (nếu có dùng)
-                if (order.PromotionId.HasValue)
-                {
-                    var promotion = await _context.Promotions.FindAsync(order.PromotionId.Value);
-                    if (promotion != null && promotion.UsedCount > 0)
-                    {
-                        promotion.UsedCount -= 1;
-                    }
-
-                    var usage = await _context.PromotionUsages
-                        .FirstOrDefaultAsync(pu => pu.PromotionId == order.PromotionId.Value && pu.UserId == order.UserId);
-                    if (usage != null)
-                    {
-                        _context.PromotionUsages.Remove(usage);
-                    }
-                }
-
                 // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
@@ -766,101 +696,6 @@ namespace ECommerce1.Services
             {
                 await transaction.RollbackAsync();
                 throw;
-            }
-        }
-
-        public async Task CancelFailedPaymentOrderAsync(int orderId, bool restoreCart = true)
-        {
-            using var transaction = await _context.Database.BeginTransactionAsync();
-            try
-            {
-                var order = await _context.Orders
-                    .FromSqlRaw("SELECT * FROM Orders WITH (UPDLOCK, HOLDLOCK) WHERE Id = {0}", orderId)
-                    .Include(o => o.OrderItems)
-                        .ThenInclude(oi => oi.ProductVariant)
-                    .FirstOrDefaultAsync();
-
-                if (order == null || order.OrderStatusId == 5)
-                {
-                    await transaction.CommitAsync();
-                    return;
-                }
-
-                // Đánh dấu đơn hàng là Hủy (5)
-                order.OrderStatusId = 5;
-
-                // 1. Trả lại ReservedStock
-                foreach (var item in order.OrderItems)
-                {
-                    if (item.ProductVariant != null)
-                    {
-                        item.ProductVariant.ReservedStock -= item.Quantity;
-                        if (item.ProductVariant.ReservedStock < 0) item.ProductVariant.ReservedStock = 0;
-                    }
-                }
-
-                // 2. Hoàn lại điểm thưởng
-                var userObj = await _context.Users.FindAsync(order.UserId);
-                if (userObj != null && order.PointsRedeemed > 0)
-                {
-                    userObj.RewardPoints += order.PointsRedeemed;
-                }
-
-                // 3. Hoàn lại lượt dùng Mã giảm giá (Promotion)
-                if (order.PromotionId.HasValue)
-                {
-                    var promotion = await _context.Promotions.FindAsync(order.PromotionId.Value);
-                    if (promotion != null && promotion.UsedCount > 0)
-                    {
-                        promotion.UsedCount -= 1;
-                    }
-
-                    var usage = await _context.PromotionUsages
-                        .FirstOrDefaultAsync(pu => pu.PromotionId == order.PromotionId.Value && pu.UserId == order.UserId);
-                    if (usage != null)
-                    {
-                        _context.PromotionUsages.Remove(usage);
-                    }
-                }
-
-                // 4. Khôi phục lại sản phẩm vào Giỏ hàng của người dùng (nếu restoreCart = true)
-                if (restoreCart)
-                {
-                    var cart = await _context.Carts
-                        .Include(c => c.CartItems)
-                        .FirstOrDefaultAsync(c => c.UserId == order.UserId);
-
-                    if (cart == null)
-                    {
-                        cart = new Cart { UserId = order.UserId, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
-                        _context.Carts.Add(cart);
-                        await _context.SaveChangesAsync();
-                    }
-
-                    // Xóa cart hiện tại để khôi phục chính xác các sản phẩm của đơn hàng vừa thất bại
-                    _context.CartItems.RemoveRange(cart.CartItems);
-
-                    foreach (var item in order.OrderItems)
-                    {
-                        _context.CartItems.Add(new CartItem
-                        {
-                            CartId = cart.Id,
-                            VariantId = item.VariantId,
-                            Quantity = item.Quantity,
-                            WarrantyId = item.WarrantyId,
-                            AppliedCampaignId = item.AppliedCampaignId,
-                            IsAddon = item.IsAddon
-                        });
-                    }
-                }
-
-                await _context.SaveChangesAsync();
-                await transaction.CommitAsync();
-            }
-            catch (Exception ex)
-            {
-                await transaction.RollbackAsync();
-                Console.WriteLine($"[LỖI HỦY ĐƠN VÀ KHÔI PHỤC GIỎ HÀNG]: {ex.Message}");
             }
         }
 
@@ -897,23 +732,6 @@ namespace ECommerce1.Services
                 {
                     await transaction.CommitAsync();
                     return; // Trạng thái không đổi
-                }
-
-                // Chặn duyệt đơn hàng nếu là thanh toán Online (Stripe, VNPay,...) mà giao dịch thanh toán bị thất bại hoặc chưa hoàn tất
-                if (oldStatusId == 1 && (newStatusId == 2 || newStatusId == 3 || newStatusId == 4))
-                {
-                    if (!string.Equals(order.PaymentMethod, "cod", StringComparison.OrdinalIgnoreCase))
-                    {
-                        var latestPayment = await _context.Payments
-                            .Where(p => p.OrderId == order.Id)
-                            .OrderByDescending(p => p.CreatedAt)
-                            .FirstOrDefaultAsync();
-
-                        if (latestPayment == null || !string.Equals(latestPayment.Status, "succeeded", StringComparison.OrdinalIgnoreCase))
-                        {
-                            throw new InvalidOperationException($"Không thể duyệt đơn hàng #{order.Id} vì giao dịch thanh toán qua cổng {order.PaymentMethod?.ToUpper()} thất bại hoặc chưa được thanh toán.");
-                        }
-                    }
                 }
 
                 // Các trạng thái kết thúc (Cancelled: 5, Refunded: 7) không cho phép thay đổi nữa
@@ -960,32 +778,6 @@ namespace ECommerce1.Services
                         {
                             item.ProductVariant.ReservedStock -= item.Quantity;
                             if (item.ProductVariant.ReservedStock < 0) item.ProductVariant.ReservedStock = 0;
-                        }
-                    }
-                }
-
-                // Khi Hủy đơn (5) hoặc Hoàn tiền (7): Hoàn lại Điểm thưởng và lượt dùng Mã giảm giá cho khách
-                if (newStatusId == 5 || newStatusId == 7)
-                {
-                    var userObj = await _context.Users.FindAsync(order.UserId);
-                    if (userObj != null && order.PointsRedeemed > 0)
-                    {
-                        userObj.RewardPoints += order.PointsRedeemed;
-                    }
-
-                    if (order.PromotionId.HasValue)
-                    {
-                        var promotion = await _context.Promotions.FindAsync(order.PromotionId.Value);
-                        if (promotion != null && promotion.UsedCount > 0)
-                        {
-                            promotion.UsedCount -= 1;
-                        }
-
-                        var usage = await _context.PromotionUsages
-                            .FirstOrDefaultAsync(pu => pu.PromotionId == order.PromotionId.Value && pu.UserId == order.UserId);
-                        if (usage != null)
-                        {
-                            _context.PromotionUsages.Remove(usage);
                         }
                     }
                 }
