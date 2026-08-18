@@ -298,7 +298,6 @@ namespace ECommerce1.Controllers
 
                 payment.Status = "failed";
                 payment.UpdatedAt = DateTime.UtcNow;
-                // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
 
                 // Giao dịch thất bại/bị khách hủy -> hủy luôn đơn hàng để trả hàng về kho.
@@ -311,6 +310,8 @@ namespace ECommerce1.Controllers
                 {
                     await CancelOrderForFailedPaymentAsync(payment.OrderId);
                 }
+                // Hủy đơn và khôi phục giỏ hàng, điểm thưởng & lượt dùng mã giảm giá
+                await _orderService.CancelFailedPaymentOrderAsync(payment.OrderId, restoreCart: true);
 
                 // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest(new { message = result.Message });
@@ -344,14 +345,16 @@ namespace ECommerce1.Controllers
                 }
 
                 if (payment.Status == "pending")
+                if (payment.Status == "pending" || payment.Status == "failed")
                 {
                     payment.Status = "failed";
                     payment.UpdatedAt = DateTime.UtcNow;
-                    // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                     await _context.SaveChangesAsync();
 
                     // Khách chủ động hủy thanh toán -> hủy đơn và trả hàng giữ chỗ về kho
                     await CancelOrderForFailedPaymentAsync(payment.OrderId);
+                    // Hủy đơn và khôi phục giỏ hàng, điểm thưởng & lượt dùng mã giảm giá
+                    await _orderService.CancelFailedPaymentOrderAsync(payment.OrderId, restoreCart: true);
                 }
 
                 // [Phản hồi API]: Trả về kết quả Ok cho phía Client
