@@ -182,6 +182,66 @@ namespace ECommerce1.Controllers
                 return BadRequest($"Giá nhập kho ({request.Price:N0}₫) không được lớn hơn hoặc bằng giá bán ra của biến thể '{variant.Name}' ({variant.Price:N0}₫).");
             }
 
+            // =========================================================================
+            // CHỐT CHẶN NHẬP HÀNG KHÁCH TRẢ
+            // Trước đây bất kỳ đơn nào (chờ xác nhận, đang giao, đã hoàn thành) cũng nhập lại
+            // được, và thao tác này tự ý đẩy đơn sang trạng thái 7 (Đã hoàn tiền). Nghĩa là kho
+            // và trạng thái đơn bị thay đổi mà KHÔNG cần khách gửi yêu cầu đổi trả, cũng không
+            // cần admin duyệt - bỏ qua toàn bộ quy trình ở ReturnController.
+            // Nay chỉ chấp nhận hàng thuộc một yêu cầu đổi trả đã được DUYỆT.
+            // =========================================================================
+            ReturnRequest approvedReturn = null;
+            if (type == "IMPORT_RETURN")
+            {
+                if (!request.OrderId.HasValue || request.OrderId.Value <= 0)
+                    return BadRequest("Nhập hàng khách trả bắt buộc phải gắn với một đơn hàng cụ thể.");
+
+                int targetOrderId = request.OrderId.Value;
+
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
+                approvedReturn = await _context.ReturnRequests
+                    .Include(r => r.ReturnItems)
+                        .ThenInclude(ri => ri.OrderItem)
+                    .FirstOrDefaultAsync(r => r.OrderId == targetOrderId);
+
+                if (approvedReturn == null)
+                    return BadRequest($"Đơn hàng #{targetOrderId} không có yêu cầu đổi trả nào. Khách phải gửi yêu cầu đổi trả trước.");
+
+                if (approvedReturn.Status != ReturnStatus.Approved)
+                    return BadRequest($"Yêu cầu đổi trả của đơn #{targetOrderId} đang ở trạng thái '{approvedReturn.Status}'. Chỉ yêu cầu ĐÃ DUYỆT mới được nhập hàng về kho.");
+
+                // Chỉ nhận đúng những biến thể khách được duyệt trả
+                var approvedItems = approvedReturn.ReturnItems
+                    .Where(ri => ri.OrderItem != null && ri.OrderItem.VariantId == variant.Id)
+                    .ToList();
+
+                if (!approvedItems.Any())
+                    return BadRequest($"Sản phẩm '{variant.Name}' không nằm trong yêu cầu đổi trả đã duyệt của đơn #{targetOrderId}.");
+
+                int approvedQty = approvedItems.Sum(ri => ri.Quantity);
+
+                // Đã nhập lại bao nhiêu cho đúng yêu cầu này (nhận diện qua dấu [ReturnReq #id] trong ghi chú)
+                string returnMarker = $"[ReturnReq #{approvedReturn.Id}]";
+                // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
+                int alreadyImported = await _context.InventoryTransactions
+                    .Where(t => t.VariantId == variant.Id
+                             && t.TransactionType == "IMPORT_RETURN"
+                             && !t.IsReverted
+                             && t.Note != null && t.Note.Contains(returnMarker))
+                    .SumAsync(t => (int?)t.QuantityChanged) ?? 0;
+
+                if (alreadyImported + rawQty > approvedQty)
+                    return BadRequest($"Vượt quá số lượng được duyệt trả cho '{variant.Name}': đã duyệt {approvedQty}, đã nhập {alreadyImported}, lần này {rawQty}.");
+
+                // Gắn dấu vào ghi chú để lần nhập sau đối chiếu được, tránh nhập trùng
+                if (string.IsNullOrEmpty(request.Note) || !request.Note.Contains(returnMarker))
+                {
+                    request.Note = string.IsNullOrWhiteSpace(request.Note)
+                        ? returnMarker
+                        : $"{request.Note} {returnMarker}";
+                }
+            }
+
             // Cập nhật tồn kho (Kiểm tra tình trạng máy đối với nhập hàng khách trả)
             bool shouldUpdateStock = true;
             if (type == "IMPORT_RETURN" && !string.IsNullOrEmpty(request.Note))
@@ -232,32 +292,11 @@ namespace ECommerce1.Controllers
                 IsReverted = false
             };
 
-            // TỰ ĐỘNG ĐỒNG BỘ TRẠNG THÁI ĐƠN HÀNG SANG "ĐỔI TRẢ / HOÀN TIỀN" (StatusId = 7)
-            if (type == "IMPORT_RETURN")
-            {
-                int targetOrderId = request.OrderId ?? 0;
-                if (targetOrderId <= 0 && !string.IsNullOrEmpty(request.Note))
-                {
-                    // Thử trích xuất OrderId từ Note dạng "[Đơn hàng #ORD123]" hoặc "#123"
-                    var match = System.Text.RegularExpressions.Regex.Match(request.Note, @"#?(?:ORD)?(\d+)");
-                    if (match.Success && int.TryParse(match.Groups[1].Value, out int extractedId))
-                    {
-                        targetOrderId = extractedId;
-                    }
-                }
-
-                if (targetOrderId > 0)
-                {
-                    // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
-                    var orderToUpdate = await _context.Orders.FindAsync(targetOrderId);
-                    if (orderToUpdate != null)
-                    {
-                        orderToUpdate.OrderStatusId = 7; // 7 = Refunded (Đổi trả / Hoàn tiền)
-                        // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
-                        _context.Orders.Update(orderToUpdate);
-                    }
-                }
-            }
+            // KHÔNG còn tự đổi trạng thái đơn hàng ở đây.
+            // Việc chuyển đơn sang 7 (Đã hoàn tiền) thuộc về ReturnController lúc admin DUYỆT
+            // yêu cầu đổi trả, nơi có đủ transaction hoàn tiền - hoàn điểm - ghi nhật ký kiểm toán.
+            // Đoạn cũ còn dò OrderId bằng regex từ ô Ghi chú: chỉ cần admin gõ "#5" vào ghi chú
+            // là đơn hàng #5 của người khác bị đẩy thẳng sang trạng thái Đã hoàn tiền.
 
             // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
             _context.InventoryTransactions.Add(transaction);
