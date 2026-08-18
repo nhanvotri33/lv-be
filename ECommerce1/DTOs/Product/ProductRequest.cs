@@ -13,6 +13,7 @@ namespace ECommerce1.DTOs.Product
         public string? Specs { get; set; }
         public decimal BasePrice { get; set; }
         public decimal? OriginalPrice { get; set; }
+        public decimal CostPrice { get; set; }
         public int TotalStock { get; set; }
         public bool IsActive { get; set; } = true;
         public bool IsFeatured { get; set; } = false;

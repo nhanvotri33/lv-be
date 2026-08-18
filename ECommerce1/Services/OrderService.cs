@@ -533,6 +533,9 @@ namespace ECommerce1.Services
                         VariantId = item.VariantId,
                         Quantity = item.Quantity,
                         PriceAtPurchase = finalItemPrice,
+                        CostPriceAtPurchase = item.ProductVariant != null && item.ProductVariant.CostPrice > 0 
+                            ? item.ProductVariant.CostPrice 
+                            : (item.ProductVariant?.Product?.CostPrice > 0 ? item.ProductVariant.Product.CostPrice : item.ProductVariant.Price),
                         AppliedCampaignId = item.AppliedCampaignId,
                         CampaignDiscountAmount = comboDiscountAmt,
                         IsAddon = item.IsAddon,
