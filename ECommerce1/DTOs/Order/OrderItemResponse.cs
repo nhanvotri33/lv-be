@@ -21,6 +21,20 @@ namespace ECommerce1.DTOs.Order
         public decimal CostSubTotal => Quantity * CostPriceAtPurchase;
         public decimal Profit => SubTotal - CostSubTotal;
 
+        // ===== KHUYẾN MÃI MUA KÈM (COMBO) =====
+        // CampaignDiscountAmount: số tiền được giảm trên MỘT đơn vị sản phẩm, chốt tại lúc đặt hàng.
+        // OriginalPrice: giá niêm yết trước khi trừ khuyến mãi combo (dùng để hiển thị giá gạch ngang).
+        public int? AppliedCampaignId { get; set; }
+        public bool IsAddon { get; set; }
+        public decimal CampaignDiscountAmount { get; set; }
+        public decimal OriginalPrice => PriceAtPurchase + CampaignDiscountAmount;
+        public decimal OriginalSubTotal => Quantity * OriginalPrice;
+        public decimal ComboDiscountSubTotal => Quantity * CampaignDiscountAmount;
+
+        // Tổng tiền thực trả của dòng hàng (đã gồm gói bảo hành đi kèm)
+        public decimal WarrantySubTotal => Quantity * WarrantyPrice;
+        public decimal LineTotal => SubTotal + WarrantySubTotal;
+
         // Các thuộc tính bảo hành đi kèm và thẩm định
         public int? WarrantyId { get; set; }
         public string? WarrantyName { get; set; }

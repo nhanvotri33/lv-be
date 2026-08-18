@@ -25,15 +25,70 @@ namespace ECommerce1.Controllers
         private readonly ApplicationDbContext _context;
         private readonly IEnumerable<ECommerce1.Services.Payment.IPaymentProvider> _paymentProviders;
         private readonly IConfiguration _configuration;
+        private readonly IOrderService _orderService;
 
         public PaymentController(
             ApplicationDbContext context, 
             IEnumerable<ECommerce1.Services.Payment.IPaymentProvider> paymentProviders,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            IOrderService orderService)
         {
             _context = context;
             _paymentProviders = paymentProviders;
             _configuration = configuration;
+            _orderService = orderService;
+        }
+
+        /// <summary>
+        /// Huỷ đơn hàng khi thanh toán online thất bại hoặc bị khách huỷ giữa chừng.
+        /// Trước đây chỉ phiên thanh toán bị đánh dấu "failed" còn đơn hàng vẫn nằm ở trạng thái
+        /// "Chờ thanh toán" (OrderStatusId = 1), khiến hàng bị giữ chỗ trong kho vô thời hạn.
+        ///
+        /// UpdateOrderStatusAsync(id, 5) lo trọn gói: giải phóng ReservedStock, hoàn lại điểm
+        /// khách đã tiêu cho đơn, cập nhật bảng Payments và gửi email thông báo huỷ.
+        ///
+        /// CHỈ huỷ đơn đang ở trạng thái Chờ thanh toán. Đơn đã được xác nhận/giao/huỷ trước đó
+        /// phải giữ nguyên - nếu không một lần gọi lặp (trình duyệt gọi verify 2 lần, hoặc IPN
+        /// bắn lại) sẽ làm hỏng trạng thái đơn.
+        /// </summary>
+        /// <summary>
+        /// Chuyển đơn sang "Đã thanh toán" (OrderStatusId = 2) sau khi cổng thanh toán báo thành công.
+        /// PHẢI đi qua OrderService thay vì gán thẳng order.OrderStatusId = 2: chỉ OrderService mới
+        /// trừ kho tổng (TotalStock), nhả kho giữ chỗ (ReservedStock) và đồng bộ tồn kho của Product.
+        /// Gán thẳng như trước khiến đơn thanh toán online không bao giờ bị trừ kho, trong khi đơn
+        /// do admin duyệt thì có -> tồn kho lệch dần.
+        /// </summary>
+        private async Task ConfirmOrderAfterPaymentAsync(int orderId)
+        {
+            try
+            {
+                var order = await _context.Orders.AsNoTracking().FirstOrDefaultAsync(o => o.Id == orderId);
+                if (order == null || order.OrderStatusId != 1) return;
+
+                await _orderService.UpdateOrderStatusAsync(orderId, 2); // 2 = Processing (Đã thanh toán)
+            }
+            catch (Exception ex)
+            {
+                // Khách đã trả tiền thành công rồi, không được để lỗi phụ này làm hỏng phản hồi.
+                // Đơn sẽ nằm lại ở trạng thái Chờ duyệt để admin xử lý tay.
+                Console.WriteLine($"[CONFIRM ORDER WARN] Không thể xác nhận đơn #{orderId}: {ex.Message}");
+            }
+        }
+
+        private async Task CancelOrderForFailedPaymentAsync(int orderId)
+        {
+            try
+            {
+                var order = await _context.Orders.AsNoTracking().FirstOrDefaultAsync(o => o.Id == orderId);
+                if (order == null || order.OrderStatusId != 1) return;
+
+                await _orderService.UpdateOrderStatusAsync(orderId, 5); // 5 = Cancelled (Đã hủy)
+            }
+            catch (Exception ex)
+            {
+                // Không để lỗi phụ này che mất kết quả xác minh thanh toán trả về cho client
+                Console.WriteLine($"[CANCEL ORDER WARN] Không thể hủy đơn #{orderId}: {ex.Message}");
+            }
         }
 
         // [API Endpoint POST [Route: `create-checkout-session/{orderId}`]]: Tiếp nhận và xử lý yêu cầu từ Client
@@ -231,23 +286,31 @@ namespace ECommerce1.Controllers
                     payment.ProviderTransactionId = result.TransactionId ?? "";
                     payment.UpdatedAt = DateTime.UtcNow;
 
-                    // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
-                    var order = await _context.Orders.FindAsync(payment.OrderId);
-                    if (order != null && order.OrderStatusId == 1)
-                    {
-                        order.OrderStatusId = 2; // Processing
-                    }
-
                     // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                     await _context.SaveChangesAsync();
+
+                    // Xác nhận đơn qua OrderService để trừ kho đúng quy trình
+                    await ConfirmOrderAfterPaymentAsync(payment.OrderId);
+
                     // [Phản hồi API]: Trả về kết quả Ok cho phía Client
-                    return Ok(new { message = result.Message, orderId = order?.Id });
+                    return Ok(new { message = result.Message, orderId = payment.OrderId });
                 }
 
                 payment.Status = "failed";
                 payment.UpdatedAt = DateTime.UtcNow;
                 // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
+
+                // Giao dịch thất bại/bị khách hủy -> hủy luôn đơn hàng để trả hàng về kho.
+                //
+                // BẮT BUỘC kiểm IsAuthentic trước: endpoint này là [AllowAnonymous] và vnp_TxnRef
+                // chính là Id đơn hàng (số tăng dần, đoán được). Nếu hủy đơn chỉ dựa vào
+                // !IsSuccess thì bất kỳ ai cũng có thể gọi verify-session với một Id bất kỳ,
+                // không kèm chữ ký, để hủy đơn của người khác.
+                if (result.IsAuthentic)
+                {
+                    await CancelOrderForFailedPaymentAsync(payment.OrderId);
+                }
 
                 // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest(new { message = result.Message });
@@ -271,12 +334,24 @@ namespace ECommerce1.Controllers
                 // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 if (payment == null) return NotFound("Không tìm thấy giao dịch.");
 
+                // Mã phiên giao dịch VNPAY chính là Id đơn hàng (số tăng dần, dễ đoán) nên bắt buộc
+                // phải đối chiếu chủ sở hữu, tránh việc một tài khoản bất kỳ hủy đơn của người khác.
+                var currentUserId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (!Guid.TryParse(currentUserId, out var callerId) || payment.UserId != callerId)
+                {
+                    // [Phản hồi API]: Trả về kết quả Forbid cho phía Client
+                    return Forbid();
+                }
+
                 if (payment.Status == "pending")
                 {
                     payment.Status = "failed";
                     payment.UpdatedAt = DateTime.UtcNow;
                     // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                     await _context.SaveChangesAsync();
+
+                    // Khách chủ động hủy thanh toán -> hủy đơn và trả hàng giữ chỗ về kho
+                    await CancelOrderForFailedPaymentAsync(payment.OrderId);
                 }
 
                 // [Phản hồi API]: Trả về kết quả Ok cho phía Client
@@ -378,7 +453,8 @@ namespace ECommerce1.Controllers
                 }
 
                 var verificationResult = await vnpayProvider.VerifySessionAsync(txnRef);
-                if (!verificationResult.IsSuccess && verificationResult.Message == "Chữ ký VNPAY không hợp lệ.")
+                // Thiếu chữ ký cũng nguy hiểm ngang sai chữ ký: cả hai đều là dữ liệu không xác thực
+                if (!verificationResult.IsAuthentic)
                 {
                     // [Phản hồi API]: Trả về kết quả Ok cho phía Client
                     return Ok(new { RspCode = "97", Message = "Invalid Checksum" });
@@ -389,9 +465,11 @@ namespace ECommerce1.Controllers
                     payment.Status = "succeeded";
                     payment.ProviderTransactionId = verificationResult.TransactionId ?? "";
                     payment.UpdatedAt = DateTime.UtcNow;
-                    order.OrderStatusId = 2; // Processing (Đã thanh toán)
                     // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                     await _context.SaveChangesAsync();
+
+                    // Xác nhận đơn qua OrderService để trừ kho đúng quy trình
+                    await ConfirmOrderAfterPaymentAsync(payment.OrderId);
                 }
                 else
                 {
@@ -399,6 +477,15 @@ namespace ECommerce1.Controllers
                     payment.UpdatedAt = DateTime.UtcNow;
                     // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                     await _context.SaveChangesAsync();
+
+                    // VNPAY báo giao dịch thất bại -> hủy đơn, trả hàng giữ chỗ về kho.
+                    // Endpoint này [AllowAnonymous] và vnp_TxnRef chính là Id đơn hàng, nên chỉ
+                    // được hủy khi callback có chữ ký hợp lệ (IsAuthentic). Nhánh thiếu hẳn
+                    // vnp_SecureHash cũng rơi vào đây nên kiểm tra ở trên là chưa đủ.
+                    if (verificationResult.IsAuthentic)
+                    {
+                        await CancelOrderForFailedPaymentAsync(payment.OrderId);
+                    }
                 }
 
                 // [Phản hồi API]: Trả về kết quả Ok cho phía Client

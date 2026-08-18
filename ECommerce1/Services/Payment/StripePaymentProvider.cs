@@ -81,6 +81,7 @@ namespace ECommerce1.Services.Payment
                 return new PaymentVerificationResult
                 {
                     IsSuccess = true,
+                    IsAuthentic = true,
                     TransactionId = "mock_stripe_trans_" + Guid.NewGuid().ToString().Substring(0, 8),
                     Message = "Thanh toán Stripe giả lập thành công (Chưa cấu hình API Key)"
                 };
@@ -94,6 +95,7 @@ namespace ECommerce1.Services.Payment
                 return new PaymentVerificationResult
                 {
                     IsSuccess = true,
+                    IsAuthentic = true,
                     TransactionId = session.PaymentIntentId,
                     Message = "Thanh toán Stripe thành công"
                 };
@@ -102,6 +104,8 @@ namespace ECommerce1.Services.Payment
             return new PaymentVerificationResult
             {
                 IsSuccess = false,
+                // Trạng thái do chính API Stripe trả về (không phải query string của trình duyệt)
+                IsAuthentic = true,
                 TransactionId = null,
                 Message = "Thanh toán chưa hoàn tất"
             };

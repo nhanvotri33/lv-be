@@ -109,6 +109,8 @@ builder.Services.AddHttpClient<IAiService, ChatCompletionAiService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient<IAhamoveService, AhamoveService>();
+// Nguồn duy nhất tính phí vận chuyển, dùng chung cho API báo giá và lúc chốt đơn
+builder.Services.AddScoped<IShippingFeeService, ShippingFeeService>();
 
 var jwtKey = builder.Configuration["Jwt:Key"];
 if (string.IsNullOrEmpty(jwtKey)) jwtKey = "your_super_secret_key_make_it_long_enough";

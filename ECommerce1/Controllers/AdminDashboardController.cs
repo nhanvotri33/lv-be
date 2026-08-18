@@ -77,6 +77,26 @@ namespace ECommerce1.Controllers
                 return (oi.PriceAtPurchase - cost) * oi.Quantity;
             });
 
+            // Mẫu số của "Tỷ trọng LN" là tổng lãi của các thương hiệu CÓ LÃI, không phải lãi ròng
+            // toàn shop. Lấy lãi ròng làm mẫu số thì chỉ cần một thương hiệu lỗ nặng là tổng thành
+            // số âm (hoặc 0), khi đó điều kiện "> 0" không thỏa và TOÀN BỘ tỷ trọng bị trả về 0%
+            // - đúng lỗi đang thấy trên dashboard.
+            // Cách tính này giúp các thương hiệu có lãi luôn cộng lại đúng 100%, còn thương hiệu
+            // lỗ mang tỷ trọng âm, thể hiện phần lãi chung bị bào mòn.
+            decimal totalPositiveGrossProfit = brandGroups.Sum(g =>
+            {
+                decimal gRev = g.Sum(oi => oi.PriceAtPurchase * oi.Quantity);
+                decimal gCogs = g.Sum(oi =>
+                {
+                    decimal cost = oi.CostPriceAtPurchase > 0
+                        ? oi.CostPriceAtPurchase
+                        : (oi.ProductVariant?.CostPrice > 0 ? oi.ProductVariant.CostPrice : (oi.ProductVariant?.Product?.CostPrice > 0 ? oi.ProductVariant.Product.CostPrice : oi.PriceAtPurchase));
+                    return cost * oi.Quantity;
+                });
+                decimal gProfit = gRev - gCogs;
+                return gProfit > 0 ? gProfit : 0m;
+            });
+
             var brandReportList = brandGroups.Select(g =>
             {
                 string brandName = g.Key;
@@ -92,7 +112,7 @@ namespace ECommerce1.Controllers
                 decimal profit = rev - cogs;
                 double margin = rev > 0 ? (double)Math.Round((profit / rev) * 100m, 2) : 0;
                 double revShare = totalStoreRevenue > 0 ? (double)Math.Round((rev / totalStoreRevenue) * 100m, 2) : 0;
-                double profitShare = totalStoreGrossProfit > 0 ? (double)Math.Round((profit / totalStoreGrossProfit) * 100m, 2) : 0;
+                double profitShare = totalPositiveGrossProfit > 0 ? (double)Math.Round((profit / totalPositiveGrossProfit) * 100m, 2) : 0;
                 int units = g.Sum(oi => oi.Quantity);
 
                 string insight = margin >= 40 
@@ -119,6 +139,7 @@ namespace ECommerce1.Controllers
                 totalStoreCost = totalStoreRevenue - totalStoreGrossProfit,
                 totalStoreGrossProfit,
                 overallMargin = totalStoreRevenue > 0 ? (double)Math.Round((totalStoreGrossProfit / totalStoreRevenue) * 100m, 2) : 0,
+                totalPositiveGrossProfit,
                 totalCompletedOrders = items.Select(oi => oi.OrderId).Distinct().Count(),
                 brands = brandReportList
             });

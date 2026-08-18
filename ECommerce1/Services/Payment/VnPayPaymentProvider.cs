@@ -75,6 +75,7 @@ namespace ECommerce1.Services.Payment
                 return Task.FromResult(new PaymentVerificationResult
                 {
                     IsSuccess = false,
+                    IsAuthentic = false,
                     TransactionId = string.Empty,
                     Message = "Thiếu dữ liệu callback VNPAY."
                 });
@@ -105,6 +106,7 @@ namespace ECommerce1.Services.Payment
                 return Task.FromResult(new PaymentVerificationResult
                 {
                     IsSuccess = false,
+                    IsAuthentic = false,
                     TransactionId = string.Empty,
                     Message = "Chữ ký VNPAY không hợp lệ."
                 });
@@ -117,6 +119,8 @@ namespace ECommerce1.Services.Payment
             return Task.FromResult(new PaymentVerificationResult
             {
                 IsSuccess = isSuccess,
+                // Tới đây chữ ký đã khớp -> dữ liệu đúng là do VNPAY ký và gửi về
+                IsAuthentic = true,
                 TransactionId = query["vnp_TransactionNo"].ToString(),
                 Message = isSuccess ? "Thanh toán VNPAY thành công." : $"Thanh toán VNPAY không thành công. Mã lỗi: {responseCode}"
             });

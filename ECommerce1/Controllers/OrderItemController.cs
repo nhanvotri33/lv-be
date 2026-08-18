@@ -40,7 +40,12 @@ namespace ECommerce1.Controllers
                     ProductName = oi.ProductVariant.Product.Name,
                     VariantName = oi.ProductVariant.Name,
                     Quantity = oi.Quantity,
-                    PriceAtPurchase = oi.PriceAtPurchase
+                    PriceAtPurchase = oi.PriceAtPurchase,
+                    AppliedCampaignId = oi.AppliedCampaignId,
+                    IsAddon = oi.IsAddon,
+                    CampaignDiscountAmount = oi.CampaignDiscountAmount,
+                    WarrantyId = oi.WarrantyId,
+                    WarrantyPrice = oi.WarrantyPrice
                 })
                 .ToListAsync();
 

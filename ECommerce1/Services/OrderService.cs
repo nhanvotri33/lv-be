@@ -21,18 +21,21 @@ namespace ECommerce1.Services
         private readonly IAhamoveService _ahamoveService;
         private readonly IEmailService _emailService;
         private readonly IServiceScopeFactory _scopeFactory;
+        private readonly IShippingFeeService _shippingFeeService;
 
         public OrderService(ApplicationDbContext context, 
             IEnumerable<ECommerce1.Services.Payment.IPaymentProvider> paymentProviders,
             IAhamoveService ahamoveService,
             IEmailService emailService,
-            IServiceScopeFactory scopeFactory)
+            IServiceScopeFactory scopeFactory,
+            IShippingFeeService shippingFeeService)
         {
             _context = context;
             _paymentProviders = paymentProviders;
             _ahamoveService = ahamoveService;
             _emailService = emailService;
             _scopeFactory = scopeFactory;
+            _shippingFeeService = shippingFeeService;
         }
 
         // [Hàm thực thi nghiệp vụ]: `GetMyOrdersAsync` - Xử lý logic và luồng dữ liệu
@@ -88,6 +91,9 @@ namespace ECommerce1.Services
                             : (oi.ProductVariant != null && oi.ProductVariant.CostPrice > 0
                                 ? oi.ProductVariant.CostPrice
                                 : (oi.ProductVariant != null && oi.ProductVariant.Product != null ? oi.ProductVariant.Product.CostPrice : 0m)),
+                        AppliedCampaignId = oi.AppliedCampaignId,
+                        IsAddon = oi.IsAddon,
+                        CampaignDiscountAmount = oi.CampaignDiscountAmount,
                         WarrantyId = oi.WarrantyId,
                         WarrantyName = oi.Warranty != null ? oi.Warranty.Name : null,
                         WarrantyPrice = oi.WarrantyPrice,
@@ -152,6 +158,9 @@ namespace ECommerce1.Services
                             : (oi.ProductVariant != null && oi.ProductVariant.CostPrice > 0
                                 ? oi.ProductVariant.CostPrice
                                 : (oi.ProductVariant != null && oi.ProductVariant.Product != null ? oi.ProductVariant.Product.CostPrice : 0m)),
+                        AppliedCampaignId = oi.AppliedCampaignId,
+                        IsAddon = oi.IsAddon,
+                        CampaignDiscountAmount = oi.CampaignDiscountAmount,
                         WarrantyId = oi.WarrantyId,
                         WarrantyName = oi.Warranty != null ? oi.Warranty.Name : null,
                         WarrantyPrice = oi.WarrantyPrice,
@@ -453,42 +462,18 @@ namespace ECommerce1.Services
                     deliveryLng = request.DeliveryLongitude;
                 }
 
-                // 5.3. Tính phí giao hàng (Estimate Fee) qua Ahamove
-                decimal shippingFee = 0;
-                bool isAhamoveCalculated = false;
+                // 5.3. Tính phí giao hàng — dùng CHUNG IShippingFeeService với API báo giá
+                //      /Shipping/calculate-fee mà giỏ hàng đã gọi, nên số tiền thu đúng bằng số khách đã thấy.
+                var shippingQuote = await _shippingFeeService.ResolveQuoteAsync(
+                    shippingProvince,
+                    shippingWard,
+                    shippingAddressLine,
+                    deliveryLat,
+                    deliveryLng,
+                    1.0m,
+                    request.ShippingCarrier);
 
-                if (deliveryLat.HasValue && deliveryLng.HasValue && !string.IsNullOrEmpty(request.ShippingCarrier) && request.ShippingCarrier.Contains("Ahamove", StringComparison.OrdinalIgnoreCase))
-                {
-                    try
-                    {
-                        var destAddress = $"{shippingAddressLine}, {shippingWard}, {shippingProvince}";
-                        string serviceId = "SGN-BIKE"; // Mặc định Siêu Tốc
-
-                        if (request.ShippingCarrier.Contains("4H", StringComparison.OrdinalIgnoreCase)) serviceId = "SGN-POOL";
-                        else if (request.ShippingCarrier.Contains("Tiết Kiệm", StringComparison.OrdinalIgnoreCase)) serviceId = "SGN-EXPRESS";
-
-                        shippingFee = await _ahamoveService.EstimateFeeAsync(deliveryLat.Value, deliveryLng.Value, destAddress, serviceId);
-                        isAhamoveCalculated = true;
-                    }
-                    catch (Exception ex)
-                    {
-                        // Ghi log lỗi nếu cần thiết, ở đây chúng ta sẽ fallback về tính phí mặc định để không block khách thanh toán
-                        Console.WriteLine($"Lỗi gọi API Ahamove: {ex.Message}. Sử dụng cách tính phí mặc định làm phương án dự phòng.");
-                    }
-                }
-
-                // Fallback nếu không có tọa độ, API Ahamove gặp sự cố, hoặc khách chọn Giao Hàng Tiêu Chuẩn
-                if (!isAhamoveCalculated)
-                {
-                    decimal baseFee = 35000;
-                    if (shippingProvince.Contains("Hồ Chí Minh", StringComparison.OrdinalIgnoreCase) || 
-                        shippingProvince.Contains("Hà Nội", StringComparison.OrdinalIgnoreCase) || 
-                        shippingProvince.Contains("Đà Nẵng", StringComparison.OrdinalIgnoreCase))
-                    {
-                        baseFee = 100000; //shop tu giao hang, bam gom phi bao hiem roi vo 
-                    }
-                    shippingFee = baseFee;
-                }
+                decimal shippingFee = shippingQuote.Fee;
 
                 decimal finalPrice = priceBeforePoints + shippingFee;
                 if (finalPrice < 0) finalPrice = 0;
@@ -534,7 +519,7 @@ namespace ECommerce1.Services
                     DiscountFromPoints = discountFromPoints,
                     Note = request.Note,
                     PaymentMethod = request.PaymentMethod ?? "COD",
-                    ShippingCarrier = request.ShippingCarrier ?? (isAhamoveCalculated ? "Ahamove (Giao Siêu Tốc)" : "Giao Hàng Tiêu Chuẩn"),
+                    ShippingCarrier = !string.IsNullOrWhiteSpace(request.ShippingCarrier) ? request.ShippingCarrier : shippingQuote.Carrier,
                     ActualShippingFee = shippingFee
                 };
                 // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
@@ -571,6 +556,9 @@ namespace ECommerce1.Services
                     // Quan trọng: Tăng ReservedStock lên để giữ hàng cho khách này
                     item.ProductVariant.ReservedStock += item.Quantity;
                 }
+
+                // Chốt tổng tiền đã giảm nhờ khuyến mãi mua kèm để báo cáo/hiển thị lại trên chi tiết đơn
+                newOrder.AddonDiscountAmount = orderItemMap.Values.Sum(oi => oi.CampaignDiscountAmount * oi.Quantity);
 
                 // Cập nhật ParentOrderItemId
                 foreach (var item in cart.CartItems)
@@ -1077,6 +1065,9 @@ namespace ECommerce1.Services
                         : (oi.ProductVariant != null && oi.ProductVariant.CostPrice > 0
                             ? oi.ProductVariant.CostPrice
                             : (oi.ProductVariant != null && oi.ProductVariant.Product != null ? oi.ProductVariant.Product.CostPrice : 0m)),
+                    AppliedCampaignId = oi.AppliedCampaignId,
+                    IsAddon = oi.IsAddon,
+                    CampaignDiscountAmount = oi.CampaignDiscountAmount,
                     WarrantyId = oi.WarrantyId,
                     WarrantyName = oi.Warranty != null ? oi.Warranty.Name : null,
                     WarrantyPrice = oi.WarrantyPrice,
@@ -1197,6 +1188,11 @@ namespace ECommerce1.Services
                         : (oi.ProductVariant != null && oi.ProductVariant.CostPrice > 0
                             ? oi.ProductVariant.CostPrice
                             : (oi.ProductVariant != null && oi.ProductVariant.Product != null ? oi.ProductVariant.Product.CostPrice : 0m)),
+                    AppliedCampaignId = oi.AppliedCampaignId,
+                    IsAddon = oi.IsAddon,
+                    CampaignDiscountAmount = oi.CampaignDiscountAmount,
+                    WarrantyId = oi.WarrantyId,
+                    WarrantyPrice = oi.WarrantyPrice,
                 }).ToList()
             };
         }

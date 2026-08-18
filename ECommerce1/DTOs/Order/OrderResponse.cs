@@ -21,7 +21,11 @@ namespace ECommerce1.DTOs.Order
         public string ShippingAddress { get; set; }
         public string PaymentMethod { get; set; }
         public string PromotionCode { get; set; }
-        public decimal DiscountApplied { get; set; } // Số tiền được giảm giá
+        // Số tiền giảm của MÃ GIẢM GIÁ cấp đơn. Không lưu cột riêng trong CSDL nên được suy ra
+        // từ các số liệu đã chốt lúc đặt hàng, theo đúng công thức của OrderService.CheckoutAsync:
+        //   TotalPrice = SubTotal - promo - DiscountFromPoints + ActualShippingFee
+        public decimal DiscountApplied => Math.Max(0m,
+            Math.Round(SubTotal - DiscountFromPoints + (ActualShippingFee ?? 0m) - TotalPrice, 2));
         public int PointsEarned { get; set; }
         public int PointsRedeemed { get; set; }
         public decimal DiscountFromPoints { get; set; }
@@ -45,6 +49,19 @@ namespace ECommerce1.DTOs.Order
 
         // Doanh thu hàng hóa (chưa gồm phí ship, chưa trừ khuyến mãi cấp đơn)
         public decimal TotalItemRevenue => Items.Sum(i => i.SubTotal);
+
+        // ================= BÓC TÁCH TIỀN CỦA ĐƠN (khớp 1-1 với OrderService.CheckoutAsync) =================
+        // Tổng tiền gói bảo hành đi kèm các dòng hàng
+        public decimal TotalWarranty => Items.Sum(i => i.WarrantySubTotal);
+
+        // Tạm tính: tiền hàng (đã trừ khuyến mãi combo) + gói bảo hành. Đây là mốc để áp mã giảm giá.
+        public decimal SubTotal => TotalItemRevenue + TotalWarranty;
+
+        // Tổng tiền được giảm nhờ khuyến mãi mua kèm (combo), tính theo snapshot lúc đặt hàng
+        public decimal TotalComboDiscount => Items.Sum(i => i.ComboDiscountSubTotal);
+
+        // Giá niêm yết gốc của toàn bộ hàng hóa, trước khi trừ khuyến mãi combo
+        public decimal TotalOriginalItemRevenue => Items.Sum(i => i.OriginalSubTotal);
 
         // Tổng tiền gốc (giá nhập hàng) của toàn bộ dòng hàng trong đơn
         public decimal TotalCost => Items.Sum(i => i.CostSubTotal);
