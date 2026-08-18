@@ -58,32 +58,43 @@ namespace ECommerce1.Controllers
             if (order.OrderStatusId != 1) return BadRequest("Đơn hàng này không ở trạng thái chờ thanh toán.");
 
             // Đồng bộ TotalPrice trước khi gửi cổng thanh toán:
-            // luôn recompute từ OrderItems (đã bao gồm giảm combo qua PriceAtPurchase) + WarrantyPrice
-            // - promotion discount + shipping fee - discount điểm thưởng. Ngăn VNPay/Stripe hiển thị
-            // giá gốc khi TotalPrice trong DB bị lệch (combo/promo không áp thành công tại thời điểm checkout).
-            var itemsSubTotal = order.OrderItems.Sum(oi => (oi.PriceAtPurchase + oi.WarrantyPrice) * oi.Quantity);
-            decimal promoDiscount = 0;
-            if (order.Promotion != null)
+            // Recompute canonical total từ OrderItems (đã bao gồm giảm combo qua PriceAtPurchase) + WarrantyPrice
+            // - promotion discount + shipping fee - discount điểm thưởng.
+            // Chỉ thực hiện khi đơn có OrderItems và giá trị recompute là số hợp lệ (>= 0)
+            // để không chạm vào đơn ở trạng thái bất thường.
+            if (order.OrderItems != null && order.OrderItems.Any())
             {
-                var promo = order.Promotion;
-                if (!string.IsNullOrEmpty(promo.DiscountType) && promo.DiscountType.ToUpper() == "PERCENTAGE")
+                var itemsSubTotal = order.OrderItems.Sum(oi => (oi.PriceAtPurchase + oi.WarrantyPrice) * oi.Quantity);
+                decimal promoDiscount = 0;
+                if (order.Promotion != null && !string.IsNullOrEmpty(order.Promotion.DiscountType))
                 {
-                    promoDiscount = itemsSubTotal * (promo.DiscountValue / 100m);
-                    if (promo.MaxDiscountAmount.HasValue && promoDiscount > promo.MaxDiscountAmount.Value)
-                        promoDiscount = promo.MaxDiscountAmount.Value;
+                    var promo = order.Promotion;
+                    var type = promo.DiscountType.ToUpper();
+                    if (type == "PERCENTAGE")
+                    {
+                        promoDiscount = itemsSubTotal * (promo.DiscountValue / 100m);
+                        if (promo.MaxDiscountAmount.HasValue && promoDiscount > promo.MaxDiscountAmount.Value)
+                            promoDiscount = promo.MaxDiscountAmount.Value;
+                    }
+                    else if (type == "FIXED_AMOUNT")
+                    {
+                        promoDiscount = promo.DiscountValue;
+                    }
+                    // Type lạ -> không suy đoán, giữ promoDiscount = 0
+
+                    if (promoDiscount < 0) promoDiscount = 0;
+                    if (promoDiscount > itemsSubTotal) promoDiscount = itemsSubTotal;
                 }
-                else
+                var pointsDiscount = order.DiscountFromPoints < 0 ? 0 : order.DiscountFromPoints;
+                var shippingFee = order.ActualShippingFee.HasValue && order.ActualShippingFee.Value > 0
+                    ? order.ActualShippingFee.Value
+                    : 0m;
+                var expectedTotal = Math.Max(0, itemsSubTotal - promoDiscount - pointsDiscount + shippingFee);
+                if (order.TotalPrice != expectedTotal)
                 {
-                    promoDiscount = promo.DiscountValue;
+                    order.TotalPrice = expectedTotal;
+                    await _context.SaveChangesAsync();
                 }
-                if (promoDiscount > itemsSubTotal) promoDiscount = itemsSubTotal;
-            }
-            decimal shippingFee = order.ActualShippingFee ?? 0;
-            decimal expectedTotal = Math.Max(0, itemsSubTotal - promoDiscount - order.DiscountFromPoints + shippingFee);
-            if (order.TotalPrice != expectedTotal)
-            {
-                order.TotalPrice = expectedTotal;
-                await _context.SaveChangesAsync();
             }
 
             // Hỗ trợ lưu log giao dịch COD trong Nhật ký giao dịch thanh toá 
