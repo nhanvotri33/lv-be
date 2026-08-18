@@ -140,6 +140,21 @@ namespace ECommerce1.Controllers
                 .ThenInclude(pv => pv.Product)
                 .FirstOrDefaultAsync(r => r.OrderId == orderId);
 
+            // Chỉ chủ đơn hoặc Admin mới được xem. Endpoint này chỉ [Authorize] chung nên nếu
+            // không đối chiếu, bất kỳ tài khoản nào cũng đọc được lý do trả hàng, ảnh minh chứng
+            // và danh sách sản phẩm đã mua của người khác - chỉ cần đoán orderId (số tăng dần).
+            if (req != null)
+            {
+                var callerRole = User.FindFirst(ClaimTypes.Role)?.Value;
+                var callerIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                bool isAdmin = string.Equals(callerRole, "Admin", StringComparison.OrdinalIgnoreCase);
+                if (!isAdmin && (!Guid.TryParse(callerIdString, out Guid callerId) || req.UserId != callerId))
+                {
+                    // [Phản hồi API]: Trả về kết quả Forbid cho phía Client
+                    return Forbid();
+                }
+            }
+
             if (req == null)
                 // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 return NotFound(new { message = "Chưa có yêu cầu đổi trả cho đơn hàng này." });
@@ -172,6 +187,39 @@ namespace ECommerce1.Controllers
         }
 
         // ================= 3. DANH SÁCH TẤT CẢ YÊU CẦU ĐỔI TRẢ (ADMIN) =================
+        /// <summary>
+        /// Khách hàng lấy toàn bộ yêu cầu đổi trả của CHÍNH MÌNH, gom theo đơn.
+        /// Trang theo dõi đơn hàng trước đây đọc trạng thái đổi trả từ localStorage nên chỉ đúng
+        /// trên đúng trình duyệt đã gửi yêu cầu; đổi máy hay xoá cache là mất sạch.
+        /// </summary>
+        // [API Endpoint GET [Route: `my`]]: Tiếp nhận và xử lý yêu cầu từ Client
+        [HttpGet("my")]
+        public async Task<IActionResult> GetMyReturnRequests()
+        {
+            var userIdString = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(userIdString, out Guid userId))
+                // [Phản hồi API]: Trả về kết quả Unauthorized cho phía Client
+                return Unauthorized(new { message = "Vui lòng đăng nhập lại." });
+
+            // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
+            var requests = await _context.ReturnRequests
+                .Where(r => r.UserId == userId)
+                .OrderByDescending(r => r.CreatedAt)
+                .Select(r => new
+                {
+                    id = r.Id,
+                    orderId = r.OrderId,
+                    status = r.Status.ToString(),
+                    totalRefundAmount = r.TotalRefundAmount,
+                    adminNote = r.AdminNote,
+                    createdAt = r.CreatedAt
+                })
+                .ToListAsync();
+
+            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
+            return Ok(requests);
+        }
+
         [HttpGet]
         [Authorize(Roles = "Admin")]
         // [Hàm thực thi nghiệp vụ]: `GetAllReturnRequests` - Xử lý logic và luồng dữ liệu
