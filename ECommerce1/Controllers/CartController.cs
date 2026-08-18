@@ -224,7 +224,9 @@ namespace ECommerce1.Controllers
                 _context.CartItems.RemoveRange(cart.CartItems);
             }
 
-            // Thêm các item mới
+            // Thêm các item mới. Lưu tạm cặp (CartItem đang chờ persist, request gốc) để pass 2
+            // gắn ParentCartItemId cho addon theo ParentProductId của SP chính.
+            var pendingPairs = new System.Collections.Generic.List<(CartItem CartItem, SyncCartRequest Req, int ProductId)>();
             if (items != null)
             {
                 foreach (var item in items)
@@ -245,18 +247,40 @@ namespace ECommerce1.Controllers
                         VariantId = item.VariantId,
                         Quantity = safeQuantity,
                         AppliedCampaignId = item.AppliedCampaignId,
-                        ParentCartItemId = item.ParentCartItemId,
+                        ParentCartItemId = null, // Sẽ resolve ở pass 2 dưới đây
                         IsAddon = item.IsAddon,
                         WarrantyId = item.WarrantyId
                     };
                     // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                     _context.CartItems.Add(cartItem);
+                    pendingPairs.Add((cartItem, item, variant.ProductId));
                 }
             }
 
             cart.UpdatedAt = DateTime.UtcNow;
             // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
+
+            // Pass 2: Sau khi có Id của mọi CartItem, gắn ParentCartItemId cho addon
+            // dựa trên ParentProductId FE gửi lên. Giữ combo discount ổn định qua checkout.
+            bool anyLinked = false;
+            foreach (var (cartItem, req, _) in pendingPairs)
+            {
+                if (!req.IsAddon || !req.ParentProductId.HasValue) continue;
+                var parent = pendingPairs
+                    .Where(p => !p.Req.IsAddon && p.ProductId == req.ParentProductId.Value)
+                    .Select(p => p.CartItem)
+                    .FirstOrDefault();
+                if (parent != null && parent.Id != cartItem.Id)
+                {
+                    cartItem.ParentCartItemId = parent.Id;
+                    anyLinked = true;
+                }
+            }
+            if (anyLinked)
+            {
+                await _context.SaveChangesAsync();
+            }
 
             // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok("Đồng bộ giỏ hàng thành công.");
@@ -271,5 +295,7 @@ namespace ECommerce1.Controllers
         public int? ParentCartItemId { get; set; }
         public bool IsAddon { get; set; } = false;
         public int? WarrantyId { get; set; }
+        // ProductId của SP chính do FE gửi kèm để gắn Parent chính xác cho addon
+        public int? ParentProductId { get; set; }
     }
 }
