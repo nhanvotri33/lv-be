@@ -104,13 +104,24 @@ namespace ECommerce1.Controllers
             }
 
             // 2. Tính phí Tiêu chuẩn (Giao Hàng Nhanh / Tiết Kiệm)
-            decimal standardBaseFee = 35000;
+            decimal standardBaseFee = 45000;
+            string estimatedDays = "3-5 ngày";
             
             if (dbProvinceName.Contains("Hồ Chí Minh", StringComparison.OrdinalIgnoreCase) || 
-                dbProvinceName.Contains("Hà Nội", StringComparison.OrdinalIgnoreCase) || 
-                dbProvinceName.Contains("Đà Nẵng", StringComparison.OrdinalIgnoreCase))
+                dbProvinceName.Contains("HCM", StringComparison.OrdinalIgnoreCase))
             {
-                standardBaseFee = 22000;
+                // Nội thành TP.HCM (gần kho)
+                standardBaseFee = 28000;
+                estimatedDays = "1-2 ngày";
+            }
+            else if (dbProvinceName.Contains("Hà Nội", StringComparison.OrdinalIgnoreCase) || 
+                     dbProvinceName.Contains("Đà Nẵng", StringComparison.OrdinalIgnoreCase) || 
+                     dbProvinceName.Contains("Hải Phòng", StringComparison.OrdinalIgnoreCase) || 
+                     dbProvinceName.Contains("Cần Thơ", StringComparison.OrdinalIgnoreCase))
+            {
+                // Các Thành phố lớn
+                standardBaseFee = 38000;
+                estimatedDays = "2-3 ngày";
             }
 
             decimal weightMarkup = request.TotalWeightKg > 2 ? (request.TotalWeightKg - 2) * 5000 : 0;
@@ -120,7 +131,7 @@ namespace ECommerce1.Controllers
             {
                 Fee = standardFinalFee,
                 Carrier = "Giao Hàng Tiêu Chuẩn",
-                EstimatedDeliveryDays = standardBaseFee == 22000 ? "1-2 ngày" : "3-5 ngày"
+                EstimatedDeliveryDays = estimatedDays
             });
 
             // Nếu muốn mặc định là Giao hàng tiêu chuẩn, ta có thể đảo thứ tự hoặc Frontend sẽ tự chọn
