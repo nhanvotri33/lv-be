@@ -14,6 +14,7 @@ namespace ECommerce.Models
         public int Id { get; set; }
         public int Quantity { get; set; }
         public decimal PriceAtPurchase { get; set; }
+        public decimal CostPriceAtPurchase { get; set; }
 
         public int OrderId { get; set; }
         [ForeignKey("OrderId")]

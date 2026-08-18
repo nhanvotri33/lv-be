@@ -44,6 +44,7 @@ namespace ECommerce1.Services
                     Name = pv.Name,
                     Sku = pv.Sku,
                     Price = pv.Price,
+                    CostPrice = pv.CostPrice,
                     TotalStock = pv.TotalStock,
                     ReservedStock = pv.ReservedStock,
                     AvailableStock = pv.TotalStock - pv.ReservedStock,
@@ -74,6 +75,7 @@ namespace ECommerce1.Services
                 Name = pv.Name,
                 Sku = pv.Sku,
                 Price = pv.Price,
+                CostPrice = pv.CostPrice,
                 TotalStock = pv.TotalStock,
                 ReservedStock = pv.ReservedStock,
                 AvailableStock = pv.AvailableStock,
@@ -95,6 +97,9 @@ namespace ECommerce1.Services
 
             ValidateAttributes(request.Attributes);
 
+            if (request.CostPrice > 0 && request.CostPrice >= request.Price)
+                throw new ArgumentException("Giá nhập từ Hãng (CostPrice) không được lớn hơn hoặc bằng giá bán của biến thể.");
+
             string finalSku = !string.IsNullOrEmpty(request.Sku) 
                 ? request.Sku.Trim().ToUpper() 
                 : await GenerateSkuAsync(request.ProductId, request.Attributes);
@@ -112,6 +117,7 @@ namespace ECommerce1.Services
                 Name = request.Name,
                 Sku = finalSku,
                 Price = request.Price,
+                CostPrice = request.CostPrice > 0 ? request.CostPrice : (product?.CostPrice > 0 ? product.CostPrice : request.Price),
                 TotalStock = request.TotalStock,
                 ReservedStock = 0,
                 CreatedAt = DateTime.UtcNow,
@@ -136,7 +142,7 @@ namespace ECommerce1.Services
                     VariantId = newVariant.Id,
                     QuantityChanged = newVariant.TotalStock,
                     TransactionType = "IMPORT",
-                    Price = newVariant.Price,
+                    Price = newVariant.CostPrice > 0 ? newVariant.CostPrice : newVariant.Price,
                     Note = "Khởi tạo tồn kho ban đầu",
                     IsReverted = false,
                     CreatedAt = DateTime.UtcNow
@@ -183,6 +189,12 @@ namespace ECommerce1.Services
             {
                 ValidateAttributes(request.Attributes);
 
+                if (request.CostPrice > 0 && request.CostPrice >= request.Price)
+                    throw new ArgumentException($"Giá nhập từ Hãng (CostPrice) của biến thể '{request.Name}' không được lớn hơn hoặc bằng giá bán.");
+
+                if (request.CostPrice > 0 && product.OriginalPrice.HasValue && request.CostPrice >= product.OriginalPrice.Value)
+                    throw new ArgumentException($"Giá nhập từ Hãng (CostPrice) của biến thể '{request.Name}' không được lớn hơn hoặc bằng giá gốc.");
+
                 string finalSku = request.Sku;
                 if (string.IsNullOrEmpty(finalSku))
                 {
@@ -191,7 +203,7 @@ namespace ECommerce1.Services
                     {
                         try
                         {
-                            var attrs = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(request.Attributes);
+                            var attrs = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(request.Attributes);
                             if (attrs != null)
                             {
                                 var sortedKeys = attrs.Keys
@@ -201,7 +213,7 @@ namespace ECommerce1.Services
 
                                 foreach (var key in sortedKeys)
                                 {
-                                    string value = attrs[key];
+                                    string value = attrs[key].ToString();
                                     string processedVal = ProcessAttributeValue(key, value);
                                     if (!string.IsNullOrEmpty(processedVal))
                                     {
@@ -228,6 +240,7 @@ namespace ECommerce1.Services
                     Name = request.Name,
                     Sku = finalSku,
                     Price = request.Price,
+                    CostPrice = request.CostPrice > 0 ? request.CostPrice : (product?.CostPrice > 0 ? product.CostPrice : request.Price),
                     TotalStock = request.TotalStock,
                     ReservedStock = 0,
                     CreatedAt = DateTime.UtcNow,
@@ -253,6 +266,9 @@ namespace ECommerce1.Services
             var variant = await _context.ProductVariants.FindAsync(id);
             if (variant == null)
                 throw new KeyNotFoundException("Không tìm thấy biến thể sản phẩm.");
+
+            if (request.CostPrice > 0 && request.CostPrice >= request.Price)
+                throw new ArgumentException("Giá nhập từ Hãng (CostPrice) không được lớn hơn hoặc bằng giá bán của biến thể.");
 
             if (variant.ProductId != request.ProductId)
             {
@@ -289,6 +305,7 @@ namespace ECommerce1.Services
             variant.Name = request.Name;
             variant.Sku = finalSku;
             variant.Price = request.Price;
+            variant.CostPrice = request.CostPrice > 0 ? request.CostPrice : (product?.CostPrice > 0 ? product.CostPrice : request.Price);
             variant.TotalStock = request.TotalStock;
             variant.ProductId = request.ProductId;
             variant.ImageId = imageId;
@@ -331,6 +348,9 @@ namespace ECommerce1.Services
                 .Include(pv => pv.OrderItems)
                 .ToListAsync();
 
+            decimal oldProductPrice = product.BasePrice;
+            int oldProductStock = product.TotalStock;
+
             var incomingIds = requests.Select(r => r.Id).Where(id => id > 0).ToList();
 
             // 1. Delete old variants not in the request list
@@ -361,7 +381,7 @@ namespace ECommerce1.Services
                     {
                         try
                         {
-                            var attrs = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(request.Attributes);
+                            var attrs = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(request.Attributes);
                             if (attrs != null)
                             {
                                 var sortedKeys = attrs.Keys
@@ -371,7 +391,7 @@ namespace ECommerce1.Services
 
                                 foreach (var key in sortedKeys)
                                 {
-                                    string value = attrs[key];
+                                    string value = attrs[key].ToString();
                                     string processedVal = ProcessAttributeValue(key, value);
                                     if (!string.IsNullOrEmpty(processedVal))
                                     {
@@ -448,7 +468,7 @@ namespace ECommerce1.Services
                             VariantId = newV.Id,
                             QuantityChanged = newV.TotalStock,
                             TransactionType = "IMPORT",
-                            Price = newV.Price,
+                            Price = newV.CostPrice > 0 ? newV.CostPrice : newV.Price,
                             Note = "Khởi tạo tồn kho ban đầu",
                             IsReverted = false,
                             CreatedAt = DateTime.UtcNow
@@ -473,6 +493,19 @@ namespace ECommerce1.Services
             // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
             await SyncParentProductStockAsync(productId);
+
+            var reloadedProduct = await _context.Products.FindAsync(productId);
+            if (reloadedProduct != null)
+            {
+                if (reloadedProduct.BasePrice < oldProductPrice && oldProductPrice > 0)
+                {
+                    await _notificationService.NotifyPriceDropAsync(productId, oldProductPrice, reloadedProduct.BasePrice);
+                }
+                if (oldProductStock <= 0 && reloadedProduct.TotalStock > 0)
+                {
+                    await _notificationService.NotifyRestockAsync(productId, oldProductStock, reloadedProduct.TotalStock);
+                }
+            }
         }
 
         public async Task DeleteAsync(int id)
@@ -522,7 +555,7 @@ namespace ECommerce1.Services
             {
                 try
                 {
-                    var attrs = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(attributesJson);
+                    var attrs = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(attributesJson);
                     if (attrs != null)
                     {
                         var sortedKeys = attrs.Keys
@@ -532,7 +565,7 @@ namespace ECommerce1.Services
 
                         foreach (var key in sortedKeys)
                         {
-                            string value = attrs[key];
+                            string value = attrs[key].ToString();
                             string processedVal = ProcessAttributeValue(key, value);
                             if (!string.IsNullOrEmpty(processedVal))
                             {
@@ -558,13 +591,13 @@ namespace ECommerce1.Services
 
             try
             {
-                var attrs = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(attributesJson);
+                var attrs = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(attributesJson);
                 if (attrs != null)
                 {
                     foreach (var kvp in attrs)
                     {
                         string name = kvp.Key;
-                        string value = kvp.Value;
+                        string value = kvp.Value.ToString();
 
                         if (name == "Màu sắc" || name == "Kích thước")
                         {
@@ -576,7 +609,11 @@ namespace ECommerce1.Services
                     }
                 }
             }
-            catch (JsonException)
+            catch (ArgumentException)
+            {
+                throw;
+            }
+            catch (Exception)
             {
                 throw new ArgumentException("Chuỗi thuộc tính JSON không hợp lệ.");
             }
@@ -659,8 +696,18 @@ namespace ECommerce1.Services
                     .Where(pv => pv.ProductId == productId)
                     .ToListAsync();
                 
-                product.TotalStock = variants.Sum(pv => pv.TotalStock);
-                product.ReservedStock = variants.Sum(pv => pv.ReservedStock);
+                if (variants.Any())
+                {
+                    product.TotalStock = variants.Sum(pv => pv.TotalStock);
+                    product.ReservedStock = variants.Sum(pv => pv.ReservedStock);
+                    product.BasePrice = variants.Min(pv => pv.Price);
+                    var firstCost = variants.FirstOrDefault(v => v.CostPrice > 0)?.CostPrice;
+                    if (firstCost.HasValue && firstCost.Value > 0)
+                    {
+                        product.CostPrice = firstCost.Value;
+                    }
+                }
+
                 // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
             }

@@ -17,11 +17,13 @@ namespace ECommerce1.Services
     {
         private readonly ApplicationDbContext _context;
         private readonly IFileService _fileService;
+        private readonly NotificationService _notificationService;
 
-        public ProductService(ApplicationDbContext context, IFileService fileService)
+        public ProductService(ApplicationDbContext context, IFileService fileService, NotificationService notificationService)
         {
             _context = context;
             _fileService = fileService;
+            _notificationService = notificationService;
         }
 
         private async Task<HashSet<int>> GetValidCategoryIdsAsync()
@@ -168,6 +170,7 @@ namespace ECommerce1.Services
                 Specs = p.Specs,
                 BasePrice = p.BasePrice,
                 OriginalPrice = p.OriginalPrice,
+                CostPrice = p.CostPrice,
                 TotalStock = p.TotalStock,
                 ReservedStock = p.ReservedStock,
                 AvailableStock = p.AvailableStock,
@@ -216,6 +219,7 @@ namespace ECommerce1.Services
                 Specs = product.Specs,
                 BasePrice = product.BasePrice,
                 OriginalPrice = product.OriginalPrice,
+                CostPrice = product.CostPrice,
                 TotalStock = product.TotalStock,
                 ReservedStock = product.ReservedStock,
                 AvailableStock = product.AvailableStock,
@@ -263,6 +267,7 @@ namespace ECommerce1.Services
                 Specs = product.Specs,
                 BasePrice = product.BasePrice,
                 OriginalPrice = product.OriginalPrice,
+                CostPrice = product.CostPrice,
                 TotalStock = product.TotalStock,
                 ReservedStock = product.ReservedStock,
                 AvailableStock = product.AvailableStock,
@@ -296,6 +301,12 @@ namespace ECommerce1.Services
             if (request.OriginalPrice.HasValue && request.BasePrice > request.OriginalPrice.Value)
                 throw new ArgumentException("Giá bán không được lớn hơn giá gốc.");
 
+            if (request.CostPrice > 0 && request.CostPrice >= request.BasePrice)
+                throw new ArgumentException("Giá nhập từ Hãng (CostPrice) không được lớn hơn hoặc bằng giá bán (BasePrice).");
+
+            if (request.CostPrice > 0 && request.OriginalPrice.HasValue && request.CostPrice >= request.OriginalPrice.Value)
+                throw new ArgumentException("Giá nhập từ Hãng (CostPrice) không được lớn hơn hoặc bằng giá gốc (OriginalPrice).");
+
             // =========================================================================
             // [XỬ LÝ MÃ SẢN PHẨM - BACK-END]
             // - Tự động sinh mã sản phẩm (ProductCode) từ tên nếu Admin bỏ trống khi tạo mới.
@@ -320,6 +331,7 @@ namespace ECommerce1.Services
                 Specs = request.Specs,
                 BasePrice = request.BasePrice,
                 OriginalPrice = request.OriginalPrice,
+                CostPrice = request.CostPrice > 0 ? request.CostPrice : request.BasePrice,
                 TotalStock = request.TotalStock,
                 ReservedStock = 0,
                 IsActive = request.IsActive,
@@ -368,7 +380,7 @@ namespace ECommerce1.Services
                     VariantId = defaultVariant.Id,
                     QuantityChanged = newProduct.TotalStock,
                     TransactionType = "IMPORT",
-                    Price = newProduct.BasePrice,
+                    Price = newProduct.CostPrice > 0 ? newProduct.CostPrice : newProduct.BasePrice,
                     Note = "Khởi tạo tồn kho ban đầu",
                     IsReverted = false,
                     CreatedAt = DateTime.UtcNow
@@ -411,6 +423,12 @@ namespace ECommerce1.Services
             if (request.OriginalPrice.HasValue && request.BasePrice > request.OriginalPrice.Value)
                 throw new ArgumentException("Giá bán không được lớn hơn giá gốc.");
 
+            if (request.CostPrice > 0 && request.CostPrice >= request.BasePrice)
+                throw new ArgumentException("Giá nhập từ Hãng (CostPrice) không được lớn hơn hoặc bằng giá bán (BasePrice).");
+
+            if (request.CostPrice > 0 && request.OriginalPrice.HasValue && request.CostPrice >= request.OriginalPrice.Value)
+                throw new ArgumentException("Giá nhập từ Hãng (CostPrice) không được lớn hơn hoặc bằng giá gốc (OriginalPrice).");
+
             var productCode = request.ProductCode;
             if (string.IsNullOrWhiteSpace(productCode))
             {
@@ -440,6 +458,8 @@ namespace ECommerce1.Services
             }
 
             var oldThumbnail = product.ThumbnailImage;
+            decimal oldBasePrice = product.BasePrice;
+            int oldTotalStock = product.TotalStock;
 
             product.Name = request.Name;
             product.Slug = request.Slug;
@@ -448,6 +468,23 @@ namespace ECommerce1.Services
             product.Specs = request.Specs;
             product.BasePrice = request.BasePrice;
             product.OriginalPrice = request.OriginalPrice;
+            var existingVarsForCost = await _context.ProductVariants.Where(pv => pv.ProductId == product.Id).ToListAsync();
+            if (existingVarsForCost.Any())
+            {
+                if (existingVarsForCost.Count == 1)
+                {
+                    existingVarsForCost[0].Price = request.BasePrice;
+                }
+                var firstVarCost = existingVarsForCost.FirstOrDefault(v => v.CostPrice > 0)?.CostPrice;
+                product.CostPrice = (firstVarCost.HasValue && firstVarCost.Value > 0) 
+                    ? firstVarCost.Value 
+                    : (request.CostPrice > 0 ? request.CostPrice : request.BasePrice);
+            }
+            else
+            {
+                product.CostPrice = request.CostPrice > 0 ? request.CostPrice : request.BasePrice;
+            }
+
             product.TotalStock = request.TotalStock;
             if (product.TotalStock - product.ReservedStock <= 0)
             {
@@ -478,6 +515,16 @@ namespace ECommerce1.Services
 
             // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
+
+            // Gửi thông báo tự động cho người dùng có sản phẩm trong Wishlist nếu Giá giảm hoặc Có hàng lại
+            if (request.BasePrice < oldBasePrice && oldBasePrice > 0)
+            {
+                await _notificationService.NotifyPriceDropAsync(product.Id, oldBasePrice, request.BasePrice);
+            }
+            if (oldTotalStock <= 0 && product.TotalStock > 0)
+            {
+                await _notificationService.NotifyRestockAsync(product.Id, oldTotalStock, product.TotalStock);
+            }
         }
 
         public async Task DeleteAsync(int id)

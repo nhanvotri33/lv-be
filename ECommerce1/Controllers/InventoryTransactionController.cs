@@ -20,10 +20,12 @@ namespace ECommerce1.Controllers
     public class InventoryTransactionController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly Services.NotificationService _notificationService;
 
-        public InventoryTransactionController(ApplicationDbContext context)
+        public InventoryTransactionController(ApplicationDbContext context, Services.NotificationService notificationService)
         {
             _context = context;
+            _notificationService = notificationService;
         }
 
         // ================= GET: Lấy lịch sử giao dịch kho (ADMIN) =================
@@ -143,19 +145,41 @@ namespace ECommerce1.Controllers
                 return BadRequest("Không tìm thấy biến thể hoặc sản phẩm hợp lệ.");
             }
 
+            if (request.QuantityChanged <= 0)
+            {
+                return BadRequest("Số lượng giao dịch phải lớn hơn 0.");
+            }
+
+            if (request.QuantityChanged > 100000)
+            {
+                return BadRequest("Số lượng giao dịch vượt quá giới hạn tối đa cho phép (100.000 sản phẩm / lần).");
+            }
+
             // Xác định dấu số lượng dựa trên loại giao dịch
-            int actualQtyChange = Math.Abs(request.QuantityChanged);
+            int rawQty = Math.Abs(request.QuantityChanged);
+            int actualQtyChange = rawQty;
             string type = request.TransactionType.ToUpper();
             if (type == "EXPORT_SELL" || type == "EXPORT_DEFECT")
             {
-                actualQtyChange = -actualQtyChange;
+                actualQtyChange = -rawQty;
             }
 
-            // Kiểm tra tồn kho nếu xuất kho
-            if (actualQtyChange < 0 && (variant.TotalStock + actualQtyChange) < 0)
+            // Kiểm tra tồn kho khả dụng nếu xuất kho
+            if (actualQtyChange < 0)
             {
-                // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
-                return BadRequest($"Tồn kho hiện tại của '{variant.Name}' không đủ ({variant.TotalStock} sản phẩm).");
+                int availableStock = variant.TotalStock - variant.ReservedStock;
+                if ((availableStock + actualQtyChange) < 0)
+                {
+                    return BadRequest($"Tồn kho khả dụng của '{variant.Name}' không đủ để xuất kho (Tổng tồn: {variant.TotalStock}, Đang giữ cho đơn đặt: {variant.ReservedStock}, Khả dụng: {availableStock}, Yêu cầu xuất: {rawQty}).");
+                }
+            }
+
+            bool isSupplierImport = type == "IMPORT_SUPPLIER" || type == "IMPORT";
+
+            // RÀNG BUỘC GIÁ NHẬP KHO: Giá nhập không được lớn hơn hoặc bằng giá bán
+            if (isSupplierImport && request.Price > 0 && request.Price >= variant.Price)
+            {
+                return BadRequest($"Giá nhập kho ({request.Price:N0}₫) không được lớn hơn hoặc bằng giá bán ra của biến thể '{variant.Name}' ({variant.Price:N0}₫).");
             }
 
             // Cập nhật tồn kho (Kiểm tra tình trạng máy đối với nhập hàng khách trả)
@@ -169,10 +193,30 @@ namespace ECommerce1.Controllers
                 }
             }
 
+            decimal txPrice = request.Price;
+            if (txPrice <= 0 && isSupplierImport)
+            {
+                txPrice = variant.CostPrice > 0 ? variant.CostPrice : variant.Price;
+            }
+
             if (shouldUpdateStock)
             {
                 // Cập nhật tồn kho ở biến thể
                 variant.TotalStock += actualQtyChange;
+
+                // NGHIỆP VỤ TỰ ĐỘNG CẬP NHẬT GIÁ NHẬP (COSTPRICE):
+                // Khi nhập kho thành công từ Nhà cung cấp, cập nhật CostPrice mới nhất cho Biến thể & Sản phẩm gốc vào CSDL
+                if (isSupplierImport && txPrice > 0)
+                {
+                    variant.CostPrice = txPrice;
+                    _context.ProductVariants.Update(variant);
+
+                    if (variant.Product != null)
+                    {
+                        variant.Product.CostPrice = txPrice;
+                        _context.Products.Update(variant.Product);
+                    }
+                }
             }
 
             // Tạo bản ghi giao dịch
@@ -181,7 +225,7 @@ namespace ECommerce1.Controllers
                 VariantId = variant.Id,
                 QuantityChanged = actualQtyChange,
                 TransactionType = request.TransactionType,
-                Price = request.Price,
+                Price = txPrice,
                 Note = request.Note,
                 CreatedAt = DateTime.UtcNow,
                 CreatedByUserId = createdByUserId,
@@ -267,12 +311,21 @@ namespace ECommerce1.Controllers
                  await _context.SaveChangesAsync();
             }
 
-            // Cập nhật tồn kho tổng ở Product atomically từ tổng các biến thể để tránh race condition
+            // Cập nhật tồn kho tổng và CostPrice ở Product atomically từ các biến thể
+            int oldProductStock = variant.Product?.TotalStock ?? 0;
+
             await _context.Database.ExecuteSqlRawAsync(
                 "UPDATE Products SET TotalStock = COALESCE((SELECT SUM(TotalStock) FROM ProductVariants WHERE ProductId = {0}), 0), " +
-                "ReservedStock = COALESCE((SELECT SUM(ReservedStock) FROM ProductVariants WHERE ProductId = {0}), 0) WHERE Id = {0}; " +
-                "UPDATE Products SET IsActive = CAST(0 AS BIT) WHERE Id = {0} AND (TotalStock - ReservedStock) <= 0;",
+                "ReservedStock = COALESCE((SELECT SUM(ReservedStock) FROM ProductVariants WHERE ProductId = {0}), 0), " +
+                "CostPrice = COALESCE((SELECT TOP 1 CostPrice FROM ProductVariants WHERE ProductId = {0} AND CostPrice > 0), CostPrice) WHERE Id = {0}; " +
+                "UPDATE Products SET IsActive = CASE WHEN (TotalStock - ReservedStock) <= 0 THEN CAST(0 AS BIT) ELSE CAST(1 AS BIT) END WHERE Id = {0};",
                 variant.ProductId);
+
+            var updatedProduct = await _context.Products.FindAsync(variant.ProductId);
+            if (updatedProduct != null && oldProductStock <= 0 && updatedProduct.TotalStock > 0)
+            {
+                await _notificationService.NotifyRestockAsync(variant.ProductId, oldProductStock, updatedProduct.TotalStock);
+            }
 
             // [Phản hồi API]: Trả về kết quả Ok cho phía Client
             return Ok(new { Message = "Thực hiện giao dịch kho thành công.", TransactionId = transaction.Id, NewStock = variant.TotalStock });
@@ -354,11 +407,12 @@ namespace ECommerce1.Controllers
             // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
             await _context.SaveChangesAsync();
 
-            // Cập nhật tồn kho tổng ở Product atomically từ tổng các biến thể để tránh race condition
+            // Cập nhật tồn kho tổng và CostPrice ở Product atomically từ các biến thể
             await _context.Database.ExecuteSqlRawAsync(
                 "UPDATE Products SET TotalStock = COALESCE((SELECT SUM(TotalStock) FROM ProductVariants WHERE ProductId = {0}), 0), " +
-                "ReservedStock = COALESCE((SELECT SUM(ReservedStock) FROM ProductVariants WHERE ProductId = {0}), 0) WHERE Id = {0}; " +
-                "UPDATE Products SET IsActive = CAST(0 AS BIT) WHERE Id = {0} AND (TotalStock - ReservedStock) <= 0;",
+                "ReservedStock = COALESCE((SELECT SUM(ReservedStock) FROM ProductVariants WHERE ProductId = {0}), 0), " +
+                "CostPrice = COALESCE((SELECT TOP 1 CostPrice FROM ProductVariants WHERE ProductId = {0} AND CostPrice > 0), CostPrice) WHERE Id = {0}; " +
+                "UPDATE Products SET IsActive = CASE WHEN (TotalStock - ReservedStock) <= 0 THEN CAST(0 AS BIT) ELSE CAST(1 AS BIT) END WHERE Id = {0};",
                 variant.ProductId);
 
             // [Phản hồi API]: Trả về kết quả Ok cho phía Client
