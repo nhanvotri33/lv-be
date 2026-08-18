@@ -139,7 +139,7 @@ namespace ECommerce1.Services.Payment
         /// Chữ ký của lệnh refund KHÁC lệnh thanh toán: không phải query string sắp xếp theo tên,
         /// mà là chuỗi các trường nối bằng dấu "|" theo đúng thứ tự VNPAY quy định.
         /// </summary>
-        public async Task<bool> RefundAsync(string transactionId, decimal amount, string? providerSessionId = null, DateTime? originalPaidAt = null)
+        public async Task<bool> RefundAsync(string transactionId, decimal amount, string? providerSessionId = null, DateTime? originalPaidAt = null, bool isFullRefund = false)
         {
             var tmnCode = _configuration["VNPAY_TMN_CODE"] ?? _configuration["VnPay:TmnCode"];
             var hashSecret = _configuration["VNPAY_HASH_SECRET"] ?? _configuration["VnPay:HashSecret"];
@@ -161,9 +161,9 @@ namespace ECommerce1.Services.Payment
             var requestId = DateTime.Now.Ticks.ToString(CultureInfo.InvariantCulture);
             var version = "2.1.0";
             var command = "refund";
-            // 02 = hoàn toàn phần, 03 = hoàn một phần. Không có mã giao dịch gốc thì VNPAY chỉ
-            // đối chiếu được theo vnp_TxnRef nên vẫn gửi chuỗi rỗng đúng đặc tả.
-            var transactionType = "03";
+            // 02 = hoàn toàn phần, 03 = hoàn một phần. Gửi sai loại có thể bị VNPAY từ chối,
+            // nên phải bám theo việc khách trả hết đơn hay chỉ trả vài món.
+            var transactionType = isFullRefund ? "02" : "03";
             var amountStr = ((long)Math.Round(amount * 100, 0)).ToString(CultureInfo.InvariantCulture);
             var transactionDate = (originalPaidAt ?? DateTime.Now).ToString("yyyyMMddHHmmss");
             var createDate = DateTime.Now.ToString("yyyyMMddHHmmss");

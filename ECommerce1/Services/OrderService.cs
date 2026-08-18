@@ -539,9 +539,14 @@ namespace ECommerce1.Services
                         VariantId = item.VariantId,
                         Quantity = item.Quantity,
                         PriceAtPurchase = finalItemPrice,
-                        CostPriceAtPurchase = item.ProductVariant != null && item.ProductVariant.CostPrice > 0 
-                            ? item.ProductVariant.CostPrice 
-                            : (item.ProductVariant?.Product?.CostPrice > 0 ? item.ProductVariant.Product.CostPrice : item.ProductVariant.Price),
+                        // GIÁ VỐN: chốt theo giá nhập đã khai của Biến thể, nếu không có thì của Sản phẩm.
+                        // KHÔNG có thì để 0 = "chưa xác định giá vốn".
+                        // Bản cũ đổ về item.ProductVariant.Price (GIÁ NIÊM YẾT) trong khi PriceAtPurchase
+                        // là GIÁ ĐÃ GIẢM, nên mọi món bán khuyến mãi mà chưa khai giá nhập đều bị ghi
+                        // nhận lỗ đúng bằng số tiền giảm - làm sai toàn bộ báo cáo lợi nhuận.
+                        CostPriceAtPurchase = item.ProductVariant != null && item.ProductVariant.CostPrice > 0
+                            ? item.ProductVariant.CostPrice
+                            : (item.ProductVariant?.Product?.CostPrice > 0 ? item.ProductVariant.Product.CostPrice : 0m),
                         AppliedCampaignId = item.AppliedCampaignId,
                         CampaignDiscountAmount = comboDiscountAmt,
                         IsAddon = item.IsAddon,
@@ -998,7 +1003,7 @@ namespace ECommerce1.Services
                             {
                                 try
                                 {
-                                    await refundProvider.RefundAsync(p.ProviderTransactionId, p.Amount, p.ProviderSessionId, p.CreatedAt);
+                                    await refundProvider.RefundAsync(p.ProviderTransactionId, p.Amount, p.ProviderSessionId, p.CreatedAt, isFullRefund: true);
                                 }
                                 catch (Exception ex)
                                 {

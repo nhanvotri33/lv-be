@@ -194,10 +194,13 @@ using (var scope = app.Services.CreateScope())
                 ALTER TABLE OrderItems ADD CostPriceAtPurchase DECIMAL(18, 2) NOT NULL DEFAULT 0;
             END
 
-            -- Cập nhật tự động giá vốn CostPrice = 85% Giá bán (Làm tròn đến hàng nghìn) cho các sản phẩm chưa có giá vốn
-            UPDATE Products SET CostPrice = ROUND(BasePrice * 0.85, -3) WHERE CostPrice IS NULL OR CostPrice <= 0;
-            UPDATE ProductVariants SET CostPrice = ROUND(Price * 0.85, -3) WHERE CostPrice IS NULL OR CostPrice <= 0;
-            UPDATE OrderItems SET CostPriceAtPurchase = ROUND(PriceAtPurchase * 0.85, -3) WHERE CostPriceAtPurchase IS NULL OR CostPriceAtPurchase <= 0;
+            -- ĐÃ GỠ: khối UPDATE tự sinh giá vốn = 85% giá bán.
+            -- Nó chạy MỖI LẦN khởi động và ghi đè dữ liệu kinh doanh thật bằng số bịa, khiến
+            -- báo cáo lợi nhuận vô nghĩa: nhiều thương hiệu có biên đúng 15,00% chỉ vì giá vốn
+            -- được tính bằng 85% giá bán chứ không phải giá nhập thật. Tệ hơn, nó chốt theo giá
+            -- bán TẠI THỜI ĐIỂM CHẠY: sau này hạ giá bán thì giá vốn vẫn giữ mức cũ cao hơn,
+            -- sinh ra những thương hiệu lỗ ảo (Apple lỗ 48,7 triệu trong báo cáo).
+            -- Giá vốn phải do người dùng khai ở màn Nhập kho; chưa khai thì để 0 = chưa xác định.
         ");
         DataSeeder.SeedExampleData(dbContext);
     }

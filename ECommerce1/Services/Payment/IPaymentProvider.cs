@@ -20,7 +20,9 @@ namespace ECommerce1.Services.Payment
         /// <param name="amount">Số tiền cần hoàn (VNĐ)</param>
         /// <param name="providerSessionId">Mã tham chiếu đơn phía cổng (VNPAY: vnp_TxnRef). VNPAY bắt buộc.</param>
         /// <param name="originalPaidAt">Thời điểm giao dịch gốc. VNPAY bắt buộc (vnp_TransactionDate).</param>
-        Task<bool> RefundAsync(string transactionId, decimal amount, string? providerSessionId = null, DateTime? originalPaidAt = null);
+        /// <param name="isFullRefund">Hoàn toàn bộ giao dịch hay chỉ một phần. VNPAY phân biệt
+        /// bằng vnp_TransactionType: 02 = toàn phần, 03 = một phần.</param>
+        Task<bool> RefundAsync(string transactionId, decimal amount, string? providerSessionId = null, DateTime? originalPaidAt = null, bool isFullRefund = false);
     }
     
     public class PaymentVerificationResult

@@ -339,6 +339,7 @@ namespace ECommerce1.Controllers
                                     VariantId = variant.Id,
                                     QuantityChanged = item.Quantity,
                                     TransactionType = "Returned",
+                                    ReturnRequestId = req.Id,
                                     Note = $"Nhập lại kho chính do Giao sai hàng - Yêu cầu #{req.Id} (Đơn #PS{req.OrderId})",
                                     Price = item.OrderItem.PriceAtPurchase,
                                     CreatedAt = DateTime.UtcNow
@@ -437,7 +438,8 @@ namespace ECommerce1.Controllers
                             payment.ProviderTransactionId,
                             refundAmount,
                             payment.ProviderSessionId,
-                            payment.CreatedAt);
+                            payment.CreatedAt,
+                            isFullRefund: refundAmount >= payment.Amount);
                     }
                     catch (Exception refundEx)
                     {

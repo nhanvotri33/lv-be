@@ -112,7 +112,7 @@ namespace ECommerce1.Services.Payment
         }
 
         // [Hàm thực thi nghiệp vụ]: `RefundAsync` - Xử lý logic và luồng dữ liệu
-        public async Task<bool> RefundAsync(string transactionId, decimal amount, string? providerSessionId = null, DateTime? originalPaidAt = null)
+        public async Task<bool> RefundAsync(string transactionId, decimal amount, string? providerSessionId = null, DateTime? originalPaidAt = null, bool isFullRefund = false)
         {
             if (string.IsNullOrEmpty(transactionId))
                 throw new ArgumentException("Mã giao dịch Stripe không hợp lệ.");

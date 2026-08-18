@@ -30,6 +30,11 @@ namespace ECommerce.Models
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         public Guid? CreatedByUserId { get; set; }
+
+        // Yêu cầu đổi trả sinh ra lần nhập kho này (nếu có).
+        // Trước đây việc chống nhập trùng phải dò chuỗi [ReturnReq #id] trong Note - dễ vỡ khi
+        // ai đó sửa ghi chú. Có cột riêng thì đối chiếu bằng khoá, chắc chắn hơn.
+        public int? ReturnRequestId { get; set; }
         // [ForeignKey("CreatedByUserId")]
         // public virtual User CreatedByUser { get; set; }
     }

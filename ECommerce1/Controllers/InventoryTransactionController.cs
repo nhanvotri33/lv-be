@@ -220,21 +220,21 @@ namespace ECommerce1.Controllers
 
                 int approvedQty = approvedItems.Sum(ri => ri.Quantity);
 
-                // Đã nhập lại bao nhiêu cho đúng yêu cầu này.
-                // Phải đếm CẢ HAI nguồn, nếu không sẽ nhập kho hai lần cho cùng một món:
-                //  - "IMPORT_RETURN": admin nhập tay ở màn Kho, mang dấu [ReturnReq #id]
-                //  - "Returned":      ReturnController tự cộng kho ngay lúc duyệt, nhưng CHỈ với
-                //                     lý do "Giao sai hàng" (hàng còn nguyên seal), ghi chú dạng
-                //                     "... Yêu cầu #id (Đơn #PS...)"
+                // Đã nhập lại bao nhiêu cho đúng yêu cầu này. Đối chiếu bằng khoá ReturnRequestId
+                // (chắc chắn hơn dò chuỗi trong ghi chú), gồm cả hai nguồn:
+                //  - admin nhập tay ở màn Kho (IMPORT_RETURN)
+                //  - ReturnController tự cộng kho lúc duyệt với lý do Giao sai hàng (Returned)
+                // Vẫn xét thêm dấu trong ghi chú để các bản ghi cũ trước khi có cột này không bị bỏ sót.
                 string returnMarker = $"[ReturnReq #{approvedReturn.Id}]";
                 string autoMarker = $"Yêu cầu #{approvedReturn.Id} (";
                 // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 int alreadyImported = await _context.InventoryTransactions
                     .Where(t => t.VariantId == variant.Id
                              && !t.IsReverted
-                             && t.Note != null
-                             && ((t.TransactionType == "IMPORT_RETURN" && t.Note.Contains(returnMarker))
-                                 || (t.TransactionType == "Returned" && t.Note.Contains(autoMarker))))
+                             && (t.ReturnRequestId == approvedReturn.Id
+                                 || (t.ReturnRequestId == null && t.Note != null
+                                     && ((t.TransactionType == "IMPORT_RETURN" && t.Note.Contains(returnMarker))
+                                         || (t.TransactionType == "Returned" && t.Note.Contains(autoMarker))))))
                     .SumAsync(t => (int?)t.QuantityChanged) ?? 0;
 
                 if (alreadyImported + rawQty > approvedQty)
@@ -296,7 +296,8 @@ namespace ECommerce1.Controllers
                 Note = request.Note,
                 CreatedAt = DateTime.UtcNow,
                 CreatedByUserId = createdByUserId,
-                IsReverted = false
+                IsReverted = false,
+                ReturnRequestId = approvedReturn?.Id
             };
 
             // KHÔNG còn tự đổi trạng thái đơn hàng ở đây.

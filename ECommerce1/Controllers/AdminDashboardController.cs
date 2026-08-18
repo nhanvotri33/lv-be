@@ -29,6 +29,14 @@ namespace ECommerce1.Controllers
         }
 
         // ================= GET: Báo cáo Lợi nhuận gộp & Hệ sinh thái theo Thương hiệu (Brand Profitability Report) =================
+
+        private static decimal ResolveCost(ECommerce.Models.OrderItem oi)
+        {
+            if (oi.CostPriceAtPurchase > 0) return oi.CostPriceAtPurchase;
+            if (oi.ProductVariant?.CostPrice > 0) return oi.ProductVariant.CostPrice;
+            if (oi.ProductVariant?.Product?.CostPrice > 0) return oi.ProductVariant.Product.CostPrice;
+            return 0m;
+        }
         [HttpGet("brand-profit-report")]
         [AllowAnonymous] // Cho phép truy vấn thống kê phục vụ thử nghiệm Admin Dashboard
         public async Task<IActionResult> GetBrandProfitReport([FromQuery] DateTime? startDate, [FromQuery] DateTime? endDate)
@@ -48,7 +56,16 @@ namespace ECommerce1.Controllers
             if (endDate.HasValue)
                 query = query.Where(oi => oi.Order.CreatedAt <= endDate.Value);
 
-            var items = await query.ToListAsync();
+            var allItems = await query.ToListAsync();
+
+            // Dòng hàng chưa khai giá vốn KHÔNG được đưa vào tính lợi nhuận.
+            // Trước đây giá vốn khuyết được đổ về chính giá bán -> lợi nhuận 0đ, trông như số liệu
+            // thật và làm loãng biên lợi nhuận của cả thương hiệu. Nay tách riêng và báo số lượng
+            // để người xem biết báo cáo đang thiếu dữ liệu ở đâu.
+            var items = allItems.Where(oi => ResolveCost(oi) > 0).ToList();
+            int unknownCostUnits = allItems.Where(oi => ResolveCost(oi) <= 0).Sum(oi => oi.Quantity);
+            decimal unknownCostRevenue = allItems.Where(oi => ResolveCost(oi) <= 0)
+                .Sum(oi => oi.PriceAtPurchase * oi.Quantity);
 
             if (!items.Any())
             {
@@ -71,10 +88,7 @@ namespace ECommerce1.Controllers
             decimal totalStoreRevenue = items.Sum(oi => oi.PriceAtPurchase * oi.Quantity);
             decimal totalStoreGrossProfit = items.Sum(oi =>
             {
-                decimal cost = oi.CostPriceAtPurchase > 0 
-                    ? oi.CostPriceAtPurchase 
-                    : (oi.ProductVariant?.CostPrice > 0 ? oi.ProductVariant.CostPrice : (oi.ProductVariant?.Product?.CostPrice > 0 ? oi.ProductVariant.Product.CostPrice : oi.PriceAtPurchase));
-                return (oi.PriceAtPurchase - cost) * oi.Quantity;
+                return (oi.PriceAtPurchase - ResolveCost(oi)) * oi.Quantity;
             });
 
             // Mẫu số của "Tỷ trọng LN" là tổng lãi của các thương hiệu CÓ LÃI, không phải lãi ròng
@@ -88,10 +102,7 @@ namespace ECommerce1.Controllers
                 decimal gRev = g.Sum(oi => oi.PriceAtPurchase * oi.Quantity);
                 decimal gCogs = g.Sum(oi =>
                 {
-                    decimal cost = oi.CostPriceAtPurchase > 0
-                        ? oi.CostPriceAtPurchase
-                        : (oi.ProductVariant?.CostPrice > 0 ? oi.ProductVariant.CostPrice : (oi.ProductVariant?.Product?.CostPrice > 0 ? oi.ProductVariant.Product.CostPrice : oi.PriceAtPurchase));
-                    return cost * oi.Quantity;
+                    return ResolveCost(oi) * oi.Quantity;
                 });
                 decimal gProfit = gRev - gCogs;
                 return gProfit > 0 ? gProfit : 0m;
@@ -103,10 +114,7 @@ namespace ECommerce1.Controllers
                 decimal rev = g.Sum(oi => oi.PriceAtPurchase * oi.Quantity);
                 decimal cogs = g.Sum(oi =>
                 {
-                    decimal cost = oi.CostPriceAtPurchase > 0 
-                        ? oi.CostPriceAtPurchase 
-                        : (oi.ProductVariant?.CostPrice > 0 ? oi.ProductVariant.CostPrice : (oi.ProductVariant?.Product?.CostPrice > 0 ? oi.ProductVariant.Product.CostPrice : oi.PriceAtPurchase));
-                    return cost * oi.Quantity;
+                    return ResolveCost(oi) * oi.Quantity;
                 });
 
                 decimal profit = rev - cogs;
@@ -140,6 +148,9 @@ namespace ECommerce1.Controllers
                 totalStoreGrossProfit,
                 overallMargin = totalStoreRevenue > 0 ? (double)Math.Round((totalStoreGrossProfit / totalStoreRevenue) * 100m, 2) : 0,
                 totalPositiveGrossProfit,
+                // Số liệu bị loại khỏi báo cáo vì chưa khai giá vốn
+                unknownCostUnits,
+                unknownCostRevenue,
                 totalCompletedOrders = items.Select(oi => oi.OrderId).Distinct().Count(),
                 brands = brandReportList
             });
