@@ -233,11 +233,17 @@ namespace ECommerce1.Controllers
                     var variant = await _context.ProductVariants.FindAsync(item.VariantId);
                     if (variant == null) continue;
 
+                    // RÀNG BUỘC TỒN KHO KHẢ DỤNG: Tối đa bằng TotalStock - ReservedStock
+                    int availStock = Math.Max(0, variant.TotalStock - variant.ReservedStock);
+                    if (availStock <= 0) continue; // Hết hàng thì bỏ qua
+
+                    int safeQuantity = Math.Min(item.Quantity, availStock);
+
                     var cartItem = new CartItem
                     {
                         CartId = cart.Id,
                         VariantId = item.VariantId,
-                        Quantity = item.Quantity,
+                        Quantity = safeQuantity,
                         AppliedCampaignId = item.AppliedCampaignId,
                         ParentCartItemId = item.ParentCartItemId,
                         IsAddon = item.IsAddon,
