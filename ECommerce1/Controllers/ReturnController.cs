@@ -22,10 +22,14 @@ namespace ECommerce1.Controllers
     public class ReturnController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IEnumerable<ECommerce1.Services.Payment.IPaymentProvider> _paymentProviders;
 
-        public ReturnController(ApplicationDbContext context)
+        public ReturnController(
+            ApplicationDbContext context,
+            IEnumerable<ECommerce1.Services.Payment.IPaymentProvider> paymentProviders)
         {
             _context = context;
+            _paymentProviders = paymentProviders;
         }
 
         // ================= 1. KHÁCH HÀNG TẠO YÊU CẦU ĐỔI TRẢ =================
@@ -283,14 +287,12 @@ namespace ECommerce1.Controllers
                 req.AdminNote = dto.AdminNote;
                 req.UpdatedAt = DateTime.UtcNow;
 
-                // BƯỚC 3: CẬP NHẬT TRẠNG THÁI NHẬT KÝ THANH TOÁN -> REFUNDED
+                // BƯỚC 3: LẤY GIAO DỊCH THANH TOÁN CỦA ĐƠN.
+                // Chưa đánh dấu "refunded" ở đây: chỉ được ghi nhận sau khi cổng thanh toán
+                // xác nhận hoàn tiền thành công (xem BƯỚC 5B ở cuối). Bản cũ đánh dấu ngay mà
+                // không hề gọi cổng, nên hệ thống báo đã hoàn tiền trong khi tiền vẫn nằm ở
+                // Stripe/VNPAY và khách không nhận được đồng nào.
                 var payment = await _context.Payments.FirstOrDefaultAsync(p => p.OrderId == req.OrderId);
-                if (payment != null)
-                {
-                    // Chữ thường cho khớp toàn bộ phần còn lại của hệ thống
-                    // (OrderService dùng "succeeded"/"failed"/"refunded"), tránh so sánh chuỗi hụt.
-                    payment.Status = "refunded";
-                }
 
                 // =========================================================================
                 // 🔥 KHOẢN 1: KHỞI TẠO BIẾN TÍNH TIỀN VÀ ĐẾM TỔNG MÓN ĐƠN HÀNG 🔥
@@ -404,6 +406,50 @@ namespace ECommerce1.Controllers
                     {
                         user.RewardPoints += req.Order.PointsRedeemed;
                     }
+                }
+
+                // =========================================================================
+                // BƯỚC 5B: HOÀN TIỀN THẬT QUA CỔNG THANH TOÁN
+                // Gọi cổng TRƯỚC khi commit: nếu cổng lỗi thì transaction được rollback, không
+                // để lại trạng thái "đã duyệt, đã nhập kho" mà tiền chưa chạy. Đơn COD không có
+                // giao dịch cổng nên bỏ qua.
+                // =========================================================================
+                if (payment != null && payment.Status == "succeeded"
+                    && !string.Equals(payment.Provider, "COD", StringComparison.OrdinalIgnoreCase))
+                {
+                    var provider = _paymentProviders.FirstOrDefault(pp =>
+                        pp.ProviderName.Equals(payment.Provider, StringComparison.OrdinalIgnoreCase));
+
+                    if (provider == null)
+                    {
+                        await transaction.RollbackAsync();
+                        // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
+                        return BadRequest(new { message = $"Không hỗ trợ hoàn tiền tự động cho cổng '{payment.Provider}'." });
+                    }
+
+                    // Hoàn đúng số tiền của những món khách thực sự trả, không hoàn cả đơn
+                    decimal refundAmount = actualRefundAmount > 0 ? actualRefundAmount : payment.Amount;
+                    if (refundAmount > payment.Amount) refundAmount = payment.Amount;
+
+                    try
+                    {
+                        await provider.RefundAsync(
+                            payment.ProviderTransactionId,
+                            refundAmount,
+                            payment.ProviderSessionId,
+                            payment.CreatedAt);
+                    }
+                    catch (Exception refundEx)
+                    {
+                        await transaction.RollbackAsync();
+                        Console.WriteLine($"[REFUND FAIL] Yêu cầu #{req.Id} (Đơn #{req.OrderId}): {refundEx.Message}");
+                        // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
+                        return BadRequest(new { message = $"Hoàn tiền qua {payment.Provider} thất bại nên chưa duyệt đổi trả: {refundEx.Message}" });
+                    }
+
+                    // Chữ thường cho khớp phần còn lại của hệ thống (OrderService dùng
+                    // "succeeded"/"failed"/"refunded"), tránh so sánh chuỗi hụt.
+                    payment.Status = "refunded";
                 }
 
                 // LƯU TOÀN BỘ VÀO DATABASE VÀ COMMIT TRANSACTION

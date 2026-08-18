@@ -987,18 +987,24 @@ namespace ECommerce1.Services
                 {
                     foreach (var p in orderPayments)
                     {
-                        if (p.Status == "succeeded" && p.Provider.Equals("stripe", StringComparison.OrdinalIgnoreCase))
+                        // Hoàn tiền cho MỌI cổng thanh toán, không riêng Stripe. Trước đây chỉ
+                        // Stripe được gọi hoàn tiền còn đơn VNPAY chỉ bị đánh dấu "refunded"
+                        // trong CSDL, tiền thực tế không hề chạy về cho khách.
+                        bool isCod = p.Provider.Equals("COD", StringComparison.OrdinalIgnoreCase);
+                        if (p.Status == "succeeded" && !isCod)
                         {
-                            var stripeProvider = _paymentProviders.FirstOrDefault(prov => prov.ProviderName.Equals("stripe", StringComparison.OrdinalIgnoreCase));
-                            if (stripeProvider != null && !string.IsNullOrEmpty(p.ProviderTransactionId))
+                            var refundProvider = _paymentProviders.FirstOrDefault(prov => prov.ProviderName.Equals(p.Provider, StringComparison.OrdinalIgnoreCase));
+                            if (refundProvider != null && !string.IsNullOrEmpty(p.ProviderTransactionId))
                             {
                                 try
                                 {
-                                    await stripeProvider.RefundAsync(p.ProviderTransactionId, p.Amount);
+                                    await refundProvider.RefundAsync(p.ProviderTransactionId, p.Amount, p.ProviderSessionId, p.CreatedAt);
                                 }
                                 catch (Exception ex)
                                 {
-                                    Console.WriteLine($"[STRIPE REFUND WARN]: {ex.Message}");
+                                    // Không chặn việc đổi trạng thái đơn, nhưng phải để lại dấu vết
+                                    // rõ ràng vì tiền chưa về tới khách.
+                                    Console.WriteLine($"[REFUND WARN] {p.Provider} - Đơn #{p.OrderId}: {ex.Message}");
                                 }
                             }
                         }

@@ -20,11 +20,16 @@ namespace ECommerce1.Services.Payment
     {
         private readonly IConfiguration _configuration;
         private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly IHttpClientFactory _httpClientFactory;
 
-        public VnPayPaymentProvider(IConfiguration configuration, IHttpContextAccessor httpContextAccessor)
+        public VnPayPaymentProvider(
+            IConfiguration configuration,
+            IHttpContextAccessor httpContextAccessor,
+            IHttpClientFactory httpClientFactory)
         {
             _configuration = configuration;
             _httpContextAccessor = httpContextAccessor;
+            _httpClientFactory = httpClientFactory;
         }
 
         public string ProviderName => "vnpay";
@@ -126,11 +131,90 @@ namespace ECommerce1.Services.Payment
             });
         }
 
-        // [Hàm thực thi nghiệp vụ]: `RefundAsync` - Xử lý logic và luồng dữ liệu
-        public Task<bool> RefundAsync(string transactionId, decimal amount)
+        /// <summary>
+        /// Hoàn tiền qua Merchant API của VNPAY (vnp_Command = "refund").
+        /// Bản cũ chỉ `return true` giả lập nên hệ thống báo đã hoàn tiền trong khi tiền vẫn nằm
+        /// ở VNPAY - khách không nhận được đồng nào.
+        ///
+        /// Chữ ký của lệnh refund KHÁC lệnh thanh toán: không phải query string sắp xếp theo tên,
+        /// mà là chuỗi các trường nối bằng dấu "|" theo đúng thứ tự VNPAY quy định.
+        /// </summary>
+        public async Task<bool> RefundAsync(string transactionId, decimal amount, string? providerSessionId = null, DateTime? originalPaidAt = null)
         {
-            // Giả lập hoàn tiền VNPAY thành công
-            return Task.FromResult(true);
+            var tmnCode = _configuration["VNPAY_TMN_CODE"] ?? _configuration["VnPay:TmnCode"];
+            var hashSecret = _configuration["VNPAY_HASH_SECRET"] ?? _configuration["VnPay:HashSecret"];
+            var apiUrl = _configuration["VnPay:ApiUrl"] ?? "https://sandbox.vnpayment.vn/merchant_webapi/api/transaction";
+
+            if (string.IsNullOrWhiteSpace(tmnCode) || string.IsNullOrWhiteSpace(hashSecret))
+                throw new InvalidOperationException("VNPAY chưa được cấu hình TmnCode/HashSecret.");
+
+            if (string.IsNullOrWhiteSpace(providerSessionId))
+                throw new InvalidOperationException("Hoàn tiền VNPAY cần mã tham chiếu đơn (vnp_TxnRef).");
+
+            if (amount <= 0)
+                throw new InvalidOperationException("Số tiền hoàn phải lớn hơn 0.");
+
+            var ipAddress = _httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString();
+            if (string.IsNullOrWhiteSpace(ipAddress) || ipAddress == "::1")
+                ipAddress = "127.0.0.1";
+
+            var requestId = DateTime.Now.Ticks.ToString(CultureInfo.InvariantCulture);
+            var version = "2.1.0";
+            var command = "refund";
+            // 02 = hoàn toàn phần, 03 = hoàn một phần. Không có mã giao dịch gốc thì VNPAY chỉ
+            // đối chiếu được theo vnp_TxnRef nên vẫn gửi chuỗi rỗng đúng đặc tả.
+            var transactionType = "03";
+            var amountStr = ((long)Math.Round(amount * 100, 0)).ToString(CultureInfo.InvariantCulture);
+            var transactionDate = (originalPaidAt ?? DateTime.Now).ToString("yyyyMMddHHmmss");
+            var createDate = DateTime.Now.ToString("yyyyMMddHHmmss");
+            var createBy = "system";
+            var orderInfo = $"Hoan tien don hang {providerSessionId}";
+            var transactionNo = transactionId ?? string.Empty;
+
+            // Thứ tự các trường trong chuỗi ký là bắt buộc, sai thứ tự là VNPAY trả mã 97
+            var signData = string.Join("|",
+                requestId, version, command, tmnCode, transactionType, providerSessionId,
+                amountStr, transactionNo, transactionDate, createBy, createDate, ipAddress, orderInfo);
+
+            var secureHash = ComputeHmacSha512(signData, hashSecret);
+
+            var payload = new Dictionary<string, string>
+            {
+                ["vnp_RequestId"] = requestId,
+                ["vnp_Version"] = version,
+                ["vnp_Command"] = command,
+                ["vnp_TmnCode"] = tmnCode,
+                ["vnp_TransactionType"] = transactionType,
+                ["vnp_TxnRef"] = providerSessionId,
+                ["vnp_Amount"] = amountStr,
+                ["vnp_TransactionNo"] = transactionNo,
+                ["vnp_TransactionDate"] = transactionDate,
+                ["vnp_CreateBy"] = createBy,
+                ["vnp_CreateDate"] = createDate,
+                ["vnp_IpAddr"] = ipAddress,
+                ["vnp_OrderInfo"] = orderInfo,
+                ["vnp_SecureHash"] = secureHash
+            };
+
+            var client = _httpClientFactory.CreateClient();
+            client.Timeout = TimeSpan.FromSeconds(30);
+
+            var json = System.Text.Json.JsonSerializer.Serialize(payload);
+            using var content = new StringContent(json, Encoding.UTF8, "application/json");
+            using var response = await client.PostAsync(apiUrl, content);
+            var body = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+                throw new InvalidOperationException($"VNPAY từ chối yêu cầu hoàn tiền (HTTP {(int)response.StatusCode}): {body}");
+
+            using var doc = System.Text.Json.JsonDocument.Parse(body);
+            var responseCode = doc.RootElement.TryGetProperty("vnp_ResponseCode", out var rc) ? rc.GetString() : null;
+            var message = doc.RootElement.TryGetProperty("vnp_Message", out var msg) ? msg.GetString() : body;
+
+            if (responseCode != "00")
+                throw new InvalidOperationException($"VNPAY hoàn tiền không thành công (mã {responseCode}): {message}");
+
+            return true;
         }
 
         private static string BuildQueryString(IEnumerable<KeyValuePair<string, string>> data, bool encode)

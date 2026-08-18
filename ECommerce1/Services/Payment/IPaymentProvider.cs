@@ -13,7 +13,14 @@ namespace ECommerce1.Services.Payment
         string ProviderName { get; }
         Task<string> CreateCheckoutSessionAsync(Order order, string successUrl, string cancelUrl);
         Task<PaymentVerificationResult> VerifySessionAsync(string sessionId);
-        Task<bool> RefundAsync(string transactionId, decimal amount);
+        /// <summary>
+        /// Hoàn tiền về cổng thanh toán.
+        /// </summary>
+        /// <param name="transactionId">Mã giao dịch của cổng (Stripe: PaymentIntent, VNPAY: vnp_TransactionNo)</param>
+        /// <param name="amount">Số tiền cần hoàn (VNĐ)</param>
+        /// <param name="providerSessionId">Mã tham chiếu đơn phía cổng (VNPAY: vnp_TxnRef). VNPAY bắt buộc.</param>
+        /// <param name="originalPaidAt">Thời điểm giao dịch gốc. VNPAY bắt buộc (vnp_TransactionDate).</param>
+        Task<bool> RefundAsync(string transactionId, decimal amount, string? providerSessionId = null, DateTime? originalPaidAt = null);
     }
     
     public class PaymentVerificationResult
