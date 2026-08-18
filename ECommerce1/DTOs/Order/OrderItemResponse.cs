@@ -14,6 +14,13 @@ namespace ECommerce1.DTOs.Order
         public decimal PriceAtPurchase { get; set; }
         public decimal SubTotal => Quantity * PriceAtPurchase;
 
+        // ===== LỢI NHUẬN DÒNG HÀNG (Giá bán - Giá vốn nhập kho) =====
+        // CostPriceAtPurchase: giá vốn được chốt (snapshot) tại thời điểm khách đặt hàng.
+        // Nếu đơn cũ chưa có snapshot, Service sẽ đổ về giá nhập mới nhất của Biến thể / Sản phẩm.
+        public decimal CostPriceAtPurchase { get; set; }
+        public decimal CostSubTotal => Quantity * CostPriceAtPurchase;
+        public decimal Profit => SubTotal - CostSubTotal;
+
         // Các thuộc tính bảo hành đi kèm và thẩm định
         public int? WarrantyId { get; set; }
         public string? WarrantyName { get; set; }

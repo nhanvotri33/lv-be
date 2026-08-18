@@ -4,6 +4,7 @@
 // ==========================================================================
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace ECommerce1.DTOs.Order
 {
@@ -36,5 +37,27 @@ namespace ECommerce1.DTOs.Order
         public decimal? ActualShippingFee { get; set; }
 
         public List<OrderItemResponse> Items { get; set; } = new List<OrderItemResponse>();
+
+        // ================= BÁO CÁO LỢI NHUẬN (Doanh thu hàng - Giá vốn nhập kho) =================
+        // Quy ước nghiệp vụ: CHỈ ghi nhận lợi nhuận thực tế với đơn hàng THÀNH CÔNG (StatusId = 4 - Đã giao).
+        // Các đơn chưa giao/hủy chỉ hiển thị lợi nhuận DỰ KIẾN (EstimatedGrossProfit) để tham khảo.
+        public bool IsProfitRealized => StatusId == 4;
+
+        // Doanh thu hàng hóa (chưa gồm phí ship, chưa trừ khuyến mãi cấp đơn)
+        public decimal TotalItemRevenue => Items.Sum(i => i.SubTotal);
+
+        // Tổng tiền gốc (giá nhập hàng) của toàn bộ dòng hàng trong đơn
+        public decimal TotalCost => Items.Sum(i => i.CostSubTotal);
+
+        // Lợi nhuận gộp dự kiến của đơn (áp dụng cho mọi trạng thái)
+        public decimal EstimatedGrossProfit => TotalItemRevenue - TotalCost;
+
+        // Lợi nhuận gộp THỰC TẾ: chỉ tính khi đơn đã giao thành công
+        public decimal GrossProfit => IsProfitRealized ? EstimatedGrossProfit : 0m;
+
+        // Biên lợi nhuận (%) trên doanh thu hàng hóa
+        public double ProfitMargin => TotalItemRevenue > 0
+            ? (double)Math.Round((EstimatedGrossProfit / TotalItemRevenue) * 100m, 2)
+            : 0;
     }
 }

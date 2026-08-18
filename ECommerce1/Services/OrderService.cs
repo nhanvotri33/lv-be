@@ -82,6 +82,12 @@ namespace ECommerce1.Services
                         VariantName = oi.ProductVariant != null ? oi.ProductVariant.Name : "Biến thể không rõ",
                         Quantity = oi.Quantity,
                         PriceAtPurchase = oi.PriceAtPurchase,
+                        // GIÁ VỐN: ưu tiên snapshot lúc đặt hàng, nếu đơn cũ chưa có thì lấy giá nhập mới nhất của Biến thể / Sản phẩm
+                        CostPriceAtPurchase = oi.CostPriceAtPurchase > 0
+                            ? oi.CostPriceAtPurchase
+                            : (oi.ProductVariant != null && oi.ProductVariant.CostPrice > 0
+                                ? oi.ProductVariant.CostPrice
+                                : (oi.ProductVariant != null && oi.ProductVariant.Product != null ? oi.ProductVariant.Product.CostPrice : 0m)),
                         WarrantyId = oi.WarrantyId,
                         WarrantyName = oi.Warranty != null ? oi.Warranty.Name : null,
                         WarrantyPrice = oi.WarrantyPrice,
@@ -140,6 +146,12 @@ namespace ECommerce1.Services
                         VariantName = oi.ProductVariant != null ? oi.ProductVariant.Name : "Biến thể không rõ",
                         Quantity = oi.Quantity,
                         PriceAtPurchase = oi.PriceAtPurchase,
+                        // GIÁ VỐN: ưu tiên snapshot lúc đặt hàng, nếu đơn cũ chưa có thì lấy giá nhập mới nhất của Biến thể / Sản phẩm
+                        CostPriceAtPurchase = oi.CostPriceAtPurchase > 0
+                            ? oi.CostPriceAtPurchase
+                            : (oi.ProductVariant != null && oi.ProductVariant.CostPrice > 0
+                                ? oi.ProductVariant.CostPrice
+                                : (oi.ProductVariant != null && oi.ProductVariant.Product != null ? oi.ProductVariant.Product.CostPrice : 0m)),
                         WarrantyId = oi.WarrantyId,
                         WarrantyName = oi.Warranty != null ? oi.Warranty.Name : null,
                         WarrantyPrice = oi.WarrantyPrice,
@@ -1059,6 +1071,12 @@ namespace ECommerce1.Services
                     VariantName = oi.ProductVariant != null ? oi.ProductVariant.Name : "Biến thể không rõ",
                     Quantity = oi.Quantity,
                     PriceAtPurchase = oi.PriceAtPurchase,
+                    // GIÁ VỐN: ưu tiên snapshot lúc đặt hàng, nếu đơn cũ chưa có thì lấy giá nhập mới nhất của Biến thể / Sản phẩm
+                    CostPriceAtPurchase = oi.CostPriceAtPurchase > 0
+                        ? oi.CostPriceAtPurchase
+                        : (oi.ProductVariant != null && oi.ProductVariant.CostPrice > 0
+                            ? oi.ProductVariant.CostPrice
+                            : (oi.ProductVariant != null && oi.ProductVariant.Product != null ? oi.ProductVariant.Product.CostPrice : 0m)),
                     WarrantyId = oi.WarrantyId,
                     WarrantyName = oi.Warranty != null ? oi.Warranty.Name : null,
                     WarrantyPrice = oi.WarrantyPrice,
@@ -1172,7 +1190,13 @@ namespace ECommerce1.Services
                     ProductName = oi.ProductVariant != null && oi.ProductVariant.Product != null ? oi.ProductVariant.Product.Name : "Sản phẩm không rõ",
                     VariantName = oi.ProductVariant != null ? oi.ProductVariant.Name : "Biến thể không rõ",
                     Quantity = oi.Quantity,
-                    PriceAtPurchase = oi.PriceAtPurchase
+                    PriceAtPurchase = oi.PriceAtPurchase,
+                    // GIÁ VỐN: ưu tiên snapshot lúc đặt hàng, nếu đơn cũ chưa có thì lấy giá nhập mới nhất của Biến thể / Sản phẩm
+                    CostPriceAtPurchase = oi.CostPriceAtPurchase > 0
+                        ? oi.CostPriceAtPurchase
+                        : (oi.ProductVariant != null && oi.ProductVariant.CostPrice > 0
+                            ? oi.ProductVariant.CostPrice
+                            : (oi.ProductVariant != null && oi.ProductVariant.Product != null ? oi.ProductVariant.Product.CostPrice : 0m)),
                 }).ToList()
             };
         }

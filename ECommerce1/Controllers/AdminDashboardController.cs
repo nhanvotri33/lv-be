@@ -20,6 +20,9 @@ namespace ECommerce1.Controllers
     {
         private readonly ApplicationDbContext _context;
 
+        // Trạng thái đơn hàng THÀNH CÔNG (OrderStatuses: 4 = Completed - Đã giao)
+        private const int COMPLETED_STATUS_ID = 4;
+
         public AdminDashboardController(ApplicationDbContext context)
         {
             _context = context;
@@ -30,13 +33,14 @@ namespace ECommerce1.Controllers
         [AllowAnonymous] // Cho phép truy vấn thống kê phục vụ thử nghiệm Admin Dashboard
         public async Task<IActionResult> GetBrandProfitReport([FromQuery] DateTime? startDate, [FromQuery] DateTime? endDate)
         {
-            // Lấy tất cả OrderItems thuộc các đơn hàng thành công / đã thanh toán / đã giao (StatusId != 5 - ngoại trừ đơn đã hủy)
+            // CHỈ TÍNH ĐƠN HÀNG THÀNH CÔNG: OrderStatusId = 4 (Completed - Đã giao).
+            // Các đơn đang chờ / đang giao / đã hủy / hoàn tiền KHÔNG được ghi nhận doanh thu & lợi nhuận.
             var query = _context.OrderItems
                 .Include(oi => oi.Order)
                 .Include(oi => oi.ProductVariant)
                     .ThenInclude(pv => pv.Product)
                         .ThenInclude(p => p.Brand)
-                .Where(oi => oi.Order != null && oi.Order.OrderStatusId != 5);
+                .Where(oi => oi.Order != null && oi.Order.OrderStatusId == COMPLETED_STATUS_ID);
 
             if (startDate.HasValue)
                 query = query.Where(oi => oi.Order.CreatedAt >= startDate.Value);
@@ -48,59 +52,16 @@ namespace ECommerce1.Controllers
 
             if (!items.Any())
             {
-                // Nếu chưa có đơn hàng thực tế nào trong CSDL, trả về dữ liệu mẫu thực tế chuẩn cấu trúc để Admin Dashboard vẽ biểu đồ sinh động
+                // Chưa có đơn hàng THÀNH CÔNG nào trong kỳ -> trả về số 0 thay vì dữ liệu mẫu,
+                // đảm bảo báo cáo lợi nhuận của Admin luôn phản ánh đúng số liệu thật.
                 return Ok(new
                 {
-                    totalStoreRevenue = 1000000000m,
-                    totalStoreGrossProfit = 260000000m,
-                    overallMargin = 26.0,
-                    brands = new List<object>
-                    {
-                        new {
-                            brandName = "Apple",
-                            revenue = 600000000m,
-                            costOfGoodsSold = 540000000m,
-                            grossProfit = 60000000m,
-                            profitMargin = 10.0,
-                            revenueShare = 60.0,
-                            profitShare = 23.08,
-                            totalUnitsSold = 30,
-                            insightNote = "Hãng kéo Doanh thu chính (60%), nhưng Biên lợi nhuận thấp (10%) do chiết khấu Apple chặt chẽ."
-                        },
-                        new {
-                            brandName = "Samsung",
-                            revenue = 250000000m,
-                            costOfGoodsSold = 200000000m,
-                            grossProfit = 50000000m,
-                            profitMargin = 20.0,
-                            revenueShare = 25.0,
-                            profitShare = 19.23,
-                            totalUnitsSold = 15,
-                            insightNote = "Doanh thu ổn định (25%), Biên lợi nhuận khá (20%)."
-                        },
-                        new {
-                            brandName = "OPPO",
-                            revenue = 100000000m,
-                            costOfGoodsSold = 70000000m,
-                            grossProfit = 30000000m,
-                            profitMargin = 30.0,
-                            revenueShare = 10.0,
-                            profitShare = 11.54,
-                            totalUnitsSold = 10,
-                            insightNote = "Tỷ trọng doanh thu vừa phải (10%), nhưng Biên lợi nhuận cao (30%)."
-                        },
-                        new {
-                            brandName = "Phụ kiện & Khác",
-                            revenue = 50000000m,
-                            costOfGoodsSold = 25000000m,
-                            grossProfit = 120000000m,
-                            profitMargin = 50.0,
-                            revenueShare = 5.0,
-                            profitShare = 46.15,
-                            totalUnitsSold = 50,
-                            insightNote = "Bán kèm hệ sinh thái combo: Doanh thu 5% nhưng đóng góp tới 46.15% tổng Lợi nhuận gộp toàn shop!"
-                        }
-                    }
+                    totalStoreRevenue = 0m,
+                    totalStoreCost = 0m,
+                    totalStoreGrossProfit = 0m,
+                    overallMargin = 0.0,
+                    totalCompletedOrders = 0,
+                    brands = new List<object>()
                 });
             }
 
@@ -155,8 +116,10 @@ namespace ECommerce1.Controllers
             return Ok(new
             {
                 totalStoreRevenue,
+                totalStoreCost = totalStoreRevenue - totalStoreGrossProfit,
                 totalStoreGrossProfit,
                 overallMargin = totalStoreRevenue > 0 ? (double)Math.Round((totalStoreGrossProfit / totalStoreRevenue) * 100m, 2) : 0,
+                totalCompletedOrders = items.Select(oi => oi.OrderId).Distinct().Count(),
                 brands = brandReportList
             });
         }
