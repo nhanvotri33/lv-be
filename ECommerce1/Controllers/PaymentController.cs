@@ -46,6 +46,7 @@ namespace ECommerce1.Controllers
             if (!Guid.TryParse(userIdString, out Guid userId)) return Unauthorized();
 
             var order = await _context.Orders
+                .Include(o => o.Promotion)
                 .Include(o => o.OrderItems)
                 .ThenInclude(oi => oi.ProductVariant)
                 .ThenInclude(pv => pv.Product)
@@ -55,6 +56,35 @@ namespace ECommerce1.Controllers
             if (order == null) return NotFound("Không tìm thấy đơn hàng");
             // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
             if (order.OrderStatusId != 1) return BadRequest("Đơn hàng này không ở trạng thái chờ thanh toán.");
+
+            // Đồng bộ TotalPrice trước khi gửi cổng thanh toán:
+            // luôn recompute từ OrderItems (đã bao gồm giảm combo qua PriceAtPurchase) + WarrantyPrice
+            // - promotion discount + shipping fee - discount điểm thưởng. Ngăn VNPay/Stripe hiển thị
+            // giá gốc khi TotalPrice trong DB bị lệch (combo/promo không áp thành công tại thời điểm checkout).
+            var itemsSubTotal = order.OrderItems.Sum(oi => (oi.PriceAtPurchase + oi.WarrantyPrice) * oi.Quantity);
+            decimal promoDiscount = 0;
+            if (order.Promotion != null)
+            {
+                var promo = order.Promotion;
+                if (!string.IsNullOrEmpty(promo.DiscountType) && promo.DiscountType.ToUpper() == "PERCENTAGE")
+                {
+                    promoDiscount = itemsSubTotal * (promo.DiscountValue / 100m);
+                    if (promo.MaxDiscountAmount.HasValue && promoDiscount > promo.MaxDiscountAmount.Value)
+                        promoDiscount = promo.MaxDiscountAmount.Value;
+                }
+                else
+                {
+                    promoDiscount = promo.DiscountValue;
+                }
+                if (promoDiscount > itemsSubTotal) promoDiscount = itemsSubTotal;
+            }
+            decimal shippingFee = order.ActualShippingFee ?? 0;
+            decimal expectedTotal = Math.Max(0, itemsSubTotal - promoDiscount - order.DiscountFromPoints + shippingFee);
+            if (order.TotalPrice != expectedTotal)
+            {
+                order.TotalPrice = expectedTotal;
+                await _context.SaveChangesAsync();
+            }
 
             // Hỗ trợ lưu log giao dịch COD trong Nhật ký giao dịch thanh toá 
             //if (provider.Equals("cod", StringComparison.OrdinalIgnoreCase))

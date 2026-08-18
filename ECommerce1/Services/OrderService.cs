@@ -267,6 +267,15 @@ namespace ECommerce1.Services
                                 }
                             }
 
+                            // Fallback cuối: nếu campaign có rule nhưng không có SP chính khớp,
+                            // vẫn tôn trọng ý định combo của khách (FE đã hiển thị giá giảm) bằng cách
+                            // gắn SP chính bất kỳ đầu tiên trong giỏ. Tránh hụt giá âm thầm khiến
+                            // Order.TotalPrice ở BE cao hơn tổng khách thấy trên giỏ / VNPay.
+                            if (parentItem == null)
+                            {
+                                parentItem = cartItemsList.FirstOrDefault(ci => !ci.IsAddon);
+                            }
+
                             if (parentItem != null)
                             {
                                 item.ParentCartItemId = parentItem.Id; // Cập nhật liên kết
@@ -299,7 +308,7 @@ namespace ECommerce1.Services
                             }
                             else
                             {
-                                // Không có sản phẩm chính tương ứng -> Hủy khuyến mãi
+                                // Giỏ hoàn toàn không có SP chính -> huỷ khuyến mãi
                                 item.AppliedCampaignId = null;
                                 item.ParentCartItemId = null;
                                 item.IsAddon = false;
