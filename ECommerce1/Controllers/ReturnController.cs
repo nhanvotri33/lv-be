@@ -287,7 +287,9 @@ namespace ECommerce1.Controllers
                 var payment = await _context.Payments.FirstOrDefaultAsync(p => p.OrderId == req.OrderId);
                 if (payment != null)
                 {
-                    payment.Status = "Refunded";
+                    // Chữ thường cho khớp toàn bộ phần còn lại của hệ thống
+                    // (OrderService dùng "succeeded"/"failed"/"refunded"), tránh so sánh chuỗi hụt.
+                    payment.Status = "refunded";
                 }
 
                 // =========================================================================
@@ -382,10 +384,26 @@ namespace ECommerce1.Controllers
                 }
 
                 // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
+                // XỬ LÝ ĐIỂM THƯỞNG - phải khớp với OrderService.UpdateOrderStatusAsync khi đơn
+                // chuyển 4 -> 7, nếu không cùng một nghiệp vụ lại cho ra hai kết quả khác nhau:
+                //  1. Thu hồi điểm thưởng đã cộng khi đơn hoàn thành
+                //  2. Thu hồi điểm tích lũy xét hạng tương ứng
+                //  3. HOÀN LẠI số điểm khách đã tiêu để thanh toán đơn này
+                // Trước đây chỉ làm bước 1, nên khách dùng điểm trả bớt tiền rồi được duyệt đổi
+                // trả sẽ mất trắng số điểm đã tiêu.
                 var user = await _context.Users.FindAsync(req.UserId);
-                if (user != null && req.Order != null && req.Order.PointsEarned > 0)
+                if (user != null && req.Order != null)
                 {
-                    user.RewardPoints = Math.Max(0, user.RewardPoints - req.Order.PointsEarned);
+                    if (req.Order.PointsEarned > 0)
+                    {
+                        user.RewardPoints = Math.Max(0, user.RewardPoints - req.Order.PointsEarned);
+                        user.AccumulatedPoints = Math.Max(0, user.AccumulatedPoints - req.Order.PointsEarned);
+                    }
+
+                    if (req.Order.PointsRedeemed > 0)
+                    {
+                        user.RewardPoints += req.Order.PointsRedeemed;
+                    }
                 }
 
                 // LƯU TOÀN BỘ VÀO DATABASE VÀ COMMIT TRANSACTION

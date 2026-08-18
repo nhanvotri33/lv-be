@@ -220,14 +220,21 @@ namespace ECommerce1.Controllers
 
                 int approvedQty = approvedItems.Sum(ri => ri.Quantity);
 
-                // Đã nhập lại bao nhiêu cho đúng yêu cầu này (nhận diện qua dấu [ReturnReq #id] trong ghi chú)
+                // Đã nhập lại bao nhiêu cho đúng yêu cầu này.
+                // Phải đếm CẢ HAI nguồn, nếu không sẽ nhập kho hai lần cho cùng một món:
+                //  - "IMPORT_RETURN": admin nhập tay ở màn Kho, mang dấu [ReturnReq #id]
+                //  - "Returned":      ReturnController tự cộng kho ngay lúc duyệt, nhưng CHỈ với
+                //                     lý do "Giao sai hàng" (hàng còn nguyên seal), ghi chú dạng
+                //                     "... Yêu cầu #id (Đơn #PS...)"
                 string returnMarker = $"[ReturnReq #{approvedReturn.Id}]";
+                string autoMarker = $"Yêu cầu #{approvedReturn.Id} (";
                 // [Truy vấn CSDL EF Core]: Đọc/Lọc dữ liệu từ SQL Server
                 int alreadyImported = await _context.InventoryTransactions
                     .Where(t => t.VariantId == variant.Id
-                             && t.TransactionType == "IMPORT_RETURN"
                              && !t.IsReverted
-                             && t.Note != null && t.Note.Contains(returnMarker))
+                             && t.Note != null
+                             && ((t.TransactionType == "IMPORT_RETURN" && t.Note.Contains(returnMarker))
+                                 || (t.TransactionType == "Returned" && t.Note.Contains(autoMarker))))
                     .SumAsync(t => (int?)t.QuantityChanged) ?? 0;
 
                 if (alreadyImported + rawQty > approvedQty)
