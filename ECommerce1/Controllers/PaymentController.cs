@@ -7,8 +7,10 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using ECommerce1.Services;
 using Stripe.Checkout;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
 using System.Threading.Tasks;
@@ -23,15 +25,18 @@ namespace ECommerce1.Controllers
         private readonly ApplicationDbContext _context;
         private readonly IEnumerable<ECommerce1.Services.Payment.IPaymentProvider> _paymentProviders;
         private readonly IConfiguration _configuration;
+        private readonly IOrderService _orderService;
 
         public PaymentController(
             ApplicationDbContext context, 
             IEnumerable<ECommerce1.Services.Payment.IPaymentProvider> paymentProviders,
-            IConfiguration configuration)
+            IConfiguration configuration,
+            IOrderService orderService)
         {
             _context = context;
             _paymentProviders = paymentProviders;
             _configuration = configuration;
+            _orderService = orderService;
         }
 
         // [API Endpoint POST [Route: `create-checkout-session/{orderId}`]]: Tiếp nhận và xử lý yêu cầu từ Client
@@ -203,8 +208,10 @@ namespace ECommerce1.Controllers
 
                 payment.Status = "failed";
                 payment.UpdatedAt = DateTime.UtcNow;
-                // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
+
+                // Hủy đơn và khôi phục giỏ hàng, điểm thưởng & lượt dùng mã giảm giá
+                await _orderService.CancelFailedPaymentOrderAsync(payment.OrderId, restoreCart: true);
 
                 // [Phản hồi API]: Trả về kết quả BadRequest cho phía Client
                 return BadRequest(new { message = result.Message });
@@ -228,12 +235,14 @@ namespace ECommerce1.Controllers
                 // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
                 if (payment == null) return NotFound("Không tìm thấy giao dịch.");
 
-                if (payment.Status == "pending")
+                if (payment.Status == "pending" || payment.Status == "failed")
                 {
                     payment.Status = "failed";
                     payment.UpdatedAt = DateTime.UtcNow;
-                    // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                     await _context.SaveChangesAsync();
+
+                    // Hủy đơn và khôi phục giỏ hàng, điểm thưởng & lượt dùng mã giảm giá
+                    await _orderService.CancelFailedPaymentOrderAsync(payment.OrderId, restoreCart: true);
                 }
 
                 // [Phản hồi API]: Trả về kết quả Ok cho phía Client

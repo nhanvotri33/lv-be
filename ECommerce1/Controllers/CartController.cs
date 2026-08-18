@@ -77,7 +77,7 @@ namespace ECommerce1.Controllers
                 {
                     var campaign = await _context.PromotionCampaigns
                         .Include(c => c.MainProductRules)
-                        .FirstOrDefaultAsync(c => c.Id == item.AppliedCampaignId.Value && c.IsActive && c.StartDate <= DateTime.UtcNow && c.EndDate >= DateTime.UtcNow);
+                        .FirstOrDefaultAsync(c => c.Id == item.AppliedCampaignId.Value && c.IsActive);
 
                     if (campaign != null)
                     {
@@ -108,11 +108,12 @@ namespace ECommerce1.Controllers
                                 dbChanged = true;
                             }
 
-                            if (campaign.DiscountType == "Percentage")
+                            string discType = campaign.DiscountType ?? "";
+                            if (string.Equals(discType, "Percentage", StringComparison.OrdinalIgnoreCase))
                                 price = price * (1 - campaign.DiscountValue / 100);
-                            else if (campaign.DiscountType == "FixedAmount")
+                            else if (string.Equals(discType, "FixedAmount", StringComparison.OrdinalIgnoreCase))
                                 price = Math.Max(0, price - campaign.DiscountValue);
-                            else if (campaign.DiscountType == "FixedPrice")
+                            else if (string.Equals(discType, "FixedPrice", StringComparison.OrdinalIgnoreCase))
                                 price = campaign.DiscountValue;
                         }
                         else

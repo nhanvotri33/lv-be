@@ -48,59 +48,12 @@ namespace ECommerce1.Controllers
 
             if (!items.Any())
             {
-                // Nếu chưa có đơn hàng thực tế nào trong CSDL, trả về dữ liệu mẫu thực tế chuẩn cấu trúc để Admin Dashboard vẽ biểu đồ sinh động
                 return Ok(new
                 {
-                    totalStoreRevenue = 1000000000m,
-                    totalStoreGrossProfit = 260000000m,
-                    overallMargin = 26.0,
-                    brands = new List<object>
-                    {
-                        new {
-                            brandName = "Apple",
-                            revenue = 600000000m,
-                            costOfGoodsSold = 540000000m,
-                            grossProfit = 60000000m,
-                            profitMargin = 10.0,
-                            revenueShare = 60.0,
-                            profitShare = 23.08,
-                            totalUnitsSold = 30,
-                            insightNote = "Hãng kéo Doanh thu chính (60%), nhưng Biên lợi nhuận thấp (10%) do chiết khấu Apple chặt chẽ."
-                        },
-                        new {
-                            brandName = "Samsung",
-                            revenue = 250000000m,
-                            costOfGoodsSold = 200000000m,
-                            grossProfit = 50000000m,
-                            profitMargin = 20.0,
-                            revenueShare = 25.0,
-                            profitShare = 19.23,
-                            totalUnitsSold = 15,
-                            insightNote = "Doanh thu ổn định (25%), Biên lợi nhuận khá (20%)."
-                        },
-                        new {
-                            brandName = "OPPO",
-                            revenue = 100000000m,
-                            costOfGoodsSold = 70000000m,
-                            grossProfit = 30000000m,
-                            profitMargin = 30.0,
-                            revenueShare = 10.0,
-                            profitShare = 11.54,
-                            totalUnitsSold = 10,
-                            insightNote = "Tỷ trọng doanh thu vừa phải (10%), nhưng Biên lợi nhuận cao (30%)."
-                        },
-                        new {
-                            brandName = "Phụ kiện & Khác",
-                            revenue = 50000000m,
-                            costOfGoodsSold = 25000000m,
-                            grossProfit = 120000000m,
-                            profitMargin = 50.0,
-                            revenueShare = 5.0,
-                            profitShare = 46.15,
-                            totalUnitsSold = 50,
-                            insightNote = "Bán kèm hệ sinh thái combo: Doanh thu 5% nhưng đóng góp tới 46.15% tổng Lợi nhuận gộp toàn shop!"
-                        }
-                    }
+                    totalStoreRevenue = 0m,
+                    totalStoreGrossProfit = 0m,
+                    overallMargin = 0.0,
+                    brands = new List<object>()
                 });
             }
 

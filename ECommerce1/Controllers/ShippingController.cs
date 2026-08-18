@@ -43,15 +43,15 @@ namespace ECommerce1.Controllers
 
             if (dbWard == null)
             {
-                // [Phản hồi API]: Trả về kết quả NotFound cho phía Client
-                return NotFound("Không tìm thấy khu vực được chỉ định.");
+                // Tự động đồng bộ Phường/Xã và Tỉnh/Thành từ VietnamLocationService nếu CSDL chưa lưu
+                await VietnamLocationService.EnsureLocationExistsAsync(_context, request.WardId);
+                dbWard = await _context.Wards
+                    .Include(w => w.Province)
+                    .FirstOrDefaultAsync(w => w.Id == request.WardId);
             }
 
             var options = new List<ShippingOption>();
-
-            // 1. Tính phí Siêu tốc (Ahamove) nếu có tọa độ (Thêm vào đầu để làm tùy chọn nổi bật)
-            // LƯU Ý: Kho hàng của chúng ta ở Quận 8, TP.HCM, nên Ahamove CHỈ có thể giao trong khu vực TP.HCM.
-            string dbProvinceName = dbWard.Province?.Name ?? "";
+            string dbProvinceName = dbWard?.Province?.Name ?? request.AddressLine ?? "";
             
             // Nếu địa chỉ thuộc TP.HCM mà chưa có tọa độ Lat/Lng từ FE gửi lên, sử dụng tọa độ mặc định trung tâm TP.HCM để ước tính phí Ahamove
             bool isHcm = dbProvinceName.Contains("Hồ Chí Minh", StringComparison.OrdinalIgnoreCase) || 
@@ -64,7 +64,7 @@ namespace ECommerce1.Controllers
                     double destLat = request.Latitude.HasValue && request.Latitude.Value != 0 ? request.Latitude.Value : 10.776389;
                     double destLng = request.Longitude.HasValue && request.Longitude.Value != 0 ? request.Longitude.Value : 106.701139;
 
-                    string wardName = dbWard.Name ?? "";
+                    string wardName = dbWard?.Name ?? "";
                     string destAddress = string.IsNullOrWhiteSpace(request.AddressLine) 
                         ? $"{wardName}, {dbProvinceName}"
                         : $"{request.AddressLine}, {wardName}, {dbProvinceName}";
