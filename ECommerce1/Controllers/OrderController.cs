@@ -60,9 +60,20 @@ namespace ECommerce1.Controllers
                 // [Phản hồi API]: Trả về kết quả Unauthorized cho phía Client
                 return Unauthorized();
 
-            var result = await _orderService.CheckoutAsync(userId, request);
-            // [Phản hồi API]: Trả về kết quả Ok cho phía Client
-            return Ok(result);
+            try
+            {
+                var result = await _orderService.CheckoutAsync(userId, request);
+                // [Phản hồi API]: Trả về kết quả Ok cho phía Client
+                return Ok(result);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
         }
 
         // ================= HỦY ĐƠN HÀNG (DÀNH CHO KHÁCH HÀNG) =================
