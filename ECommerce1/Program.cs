@@ -170,6 +170,41 @@ builder.Services.AddAuthentication(options =>
 
 var app = builder.Build();
 
+// Tự động kiểm tra, bổ sung cột CostPrice và cập nhật giá vốn mặc định (85% giá bán) trong CSDL nếu chưa có
+using (var scope = app.Services.CreateScope())
+{
+    try
+    {
+        var dbContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        dbContext.Database.ExecuteSqlRaw(@"
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'Products') AND name = N'CostPrice')
+            BEGIN
+                ALTER TABLE Products ADD CostPrice DECIMAL(18, 2) NOT NULL DEFAULT 0;
+            END
+
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'ProductVariants') AND name = N'CostPrice')
+            BEGIN
+                ALTER TABLE ProductVariants ADD CostPrice DECIMAL(18, 2) NOT NULL DEFAULT 0;
+            END
+
+            IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID(N'OrderItems') AND name = N'CostPriceAtPurchase')
+            BEGIN
+                ALTER TABLE OrderItems ADD CostPriceAtPurchase DECIMAL(18, 2) NOT NULL DEFAULT 0;
+            END
+
+            -- Cập nhật tự động giá vốn CostPrice = 85% Giá bán (Làm tròn đến hàng nghìn) cho các sản phẩm chưa có giá vốn
+            UPDATE Products SET CostPrice = ROUND(BasePrice * 0.85, -3) WHERE CostPrice IS NULL OR CostPrice <= 0;
+            UPDATE ProductVariants SET CostPrice = ROUND(Price * 0.85, -3) WHERE CostPrice IS NULL OR CostPrice <= 0;
+            UPDATE OrderItems SET CostPriceAtPurchase = ROUND(PriceAtPurchase * 0.85, -3) WHERE CostPriceAtPurchase IS NULL OR CostPriceAtPurchase <= 0;
+        ");
+        DataSeeder.SeedExampleData(dbContext);
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[DB Auto-Migration Warning]: {ex.Message}");
+    }
+}
+
 app.UseMiddleware<ECommerce1.Middlewares.ExceptionHandlingMiddleware>();
 
 // 3. Configure the HTTP request pipeline.

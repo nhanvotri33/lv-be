@@ -709,6 +709,23 @@ namespace ECommerce1.Services
                     userObj.RewardPoints += order.PointsRedeemed;
                 }
 
+                // Hoàn lại mã giảm giá (nếu có dùng)
+                if (order.PromotionId.HasValue)
+                {
+                    var promotion = await _context.Promotions.FindAsync(order.PromotionId.Value);
+                    if (promotion != null && promotion.UsedCount > 0)
+                    {
+                        promotion.UsedCount -= 1;
+                    }
+
+                    var usage = await _context.PromotionUsages
+                        .FirstOrDefaultAsync(pu => pu.PromotionId == order.PromotionId.Value && pu.UserId == order.UserId);
+                    if (usage != null)
+                    {
+                        _context.PromotionUsages.Remove(usage);
+                    }
+                }
+
                 // [Lưu vào CSDL]: Thực thi ghi/cập nhật dữ liệu xuống CSDL SQL Server
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
@@ -717,6 +734,101 @@ namespace ECommerce1.Services
             {
                 await transaction.RollbackAsync();
                 throw;
+            }
+        }
+
+        public async Task CancelFailedPaymentOrderAsync(int orderId, bool restoreCart = true)
+        {
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                var order = await _context.Orders
+                    .FromSqlRaw("SELECT * FROM Orders WITH (UPDLOCK, HOLDLOCK) WHERE Id = {0}", orderId)
+                    .Include(o => o.OrderItems)
+                        .ThenInclude(oi => oi.ProductVariant)
+                    .FirstOrDefaultAsync();
+
+                if (order == null || order.OrderStatusId == 5)
+                {
+                    await transaction.CommitAsync();
+                    return;
+                }
+
+                // Đánh dấu đơn hàng là Hủy (5)
+                order.OrderStatusId = 5;
+
+                // 1. Trả lại ReservedStock
+                foreach (var item in order.OrderItems)
+                {
+                    if (item.ProductVariant != null)
+                    {
+                        item.ProductVariant.ReservedStock -= item.Quantity;
+                        if (item.ProductVariant.ReservedStock < 0) item.ProductVariant.ReservedStock = 0;
+                    }
+                }
+
+                // 2. Hoàn lại điểm thưởng
+                var userObj = await _context.Users.FindAsync(order.UserId);
+                if (userObj != null && order.PointsRedeemed > 0)
+                {
+                    userObj.RewardPoints += order.PointsRedeemed;
+                }
+
+                // 3. Hoàn lại lượt dùng Mã giảm giá (Promotion)
+                if (order.PromotionId.HasValue)
+                {
+                    var promotion = await _context.Promotions.FindAsync(order.PromotionId.Value);
+                    if (promotion != null && promotion.UsedCount > 0)
+                    {
+                        promotion.UsedCount -= 1;
+                    }
+
+                    var usage = await _context.PromotionUsages
+                        .FirstOrDefaultAsync(pu => pu.PromotionId == order.PromotionId.Value && pu.UserId == order.UserId);
+                    if (usage != null)
+                    {
+                        _context.PromotionUsages.Remove(usage);
+                    }
+                }
+
+                // 4. Khôi phục lại sản phẩm vào Giỏ hàng của người dùng (nếu restoreCart = true)
+                if (restoreCart)
+                {
+                    var cart = await _context.Carts
+                        .Include(c => c.CartItems)
+                        .FirstOrDefaultAsync(c => c.UserId == order.UserId);
+
+                    if (cart == null)
+                    {
+                        cart = new Cart { UserId = order.UserId, CreatedAt = DateTime.UtcNow, UpdatedAt = DateTime.UtcNow };
+                        _context.Carts.Add(cart);
+                        await _context.SaveChangesAsync();
+                    }
+
+                    // Xóa cart hiện tại để khôi phục chính xác các sản phẩm của đơn hàng vừa thất bại
+                    _context.CartItems.RemoveRange(cart.CartItems);
+
+                    foreach (var item in order.OrderItems)
+                    {
+                        _context.CartItems.Add(new CartItem
+                        {
+                            CartId = cart.Id,
+                            VariantId = item.VariantId,
+                            Quantity = item.Quantity,
+                            WarrantyId = item.WarrantyId,
+                            AppliedCampaignId = item.AppliedCampaignId,
+                            IsAddon = item.IsAddon
+                        });
+                    }
+                }
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                Console.WriteLine($"[LỖI HỦY ĐƠN VÀ KHÔI PHỤC GIỎ HÀNG]: {ex.Message}");
             }
         }
 
